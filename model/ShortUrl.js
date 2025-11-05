@@ -6,6 +6,7 @@ const shortUrlSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  shortUrl: { type: String, required: true, unique: true },
   slugName: {
     type: String,
     unique: true,
@@ -24,10 +25,7 @@ const shortUrlSchema = new mongoose.Schema({
 
   tags: [String],
 
-  utmEnabled: {
-    type: Boolean,
-    default: false,
-  },
+  
 
   userId: {
     type: mongoose.Schema.Types.ObjectId,
