@@ -1,12 +1,17 @@
 import mongoose from "mongoose";
-import {v4 as uuid} from "uuid"
+import { v4 as uuid } from "uuid";
+
 const shortUrlSchema = new mongoose.Schema({
   destinationUrl: {
     type: String,
     required: true,
   },
-  slugName: String,
-  shortUrl: String,
+  slugName: {
+    type: String,
+    unique: true,
+    default: () => uuid().slice(0, 8),
+    shortUrl: String,
+  },
 
   protected: {
     type: Boolean,
@@ -21,15 +26,7 @@ const shortUrlSchema = new mongoose.Schema({
 
   utmEnabled: {
     type: Boolean,
-    default: false, // ✅ False by default
-  },
-
-  utm: {
-    source: String,     // utm_source
-    medium: String,     // utm_medium
-    campaign: String,   // utm_campaign
-    term: String,       // utm_term (optional)
-    content: String,    // utm_content (optional)
+    default: false,
   },
 
   userId: {
@@ -37,16 +34,42 @@ const shortUrlSchema = new mongoose.Schema({
     ref: "User",
   },
 
+
+  clicks: {
+    type: Number,
+    default: 0,
+  },
+  stats: {
+
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  deviceStats: {
+
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  browserStats: {
+
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  osStats: {
+
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  lastClickedAt: {
+    type: Date,
+    default: null,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,
   },
-});
+})
 
+const ShortUrl = mongoose.model("ShortUrl", shortUrlSchema);
 
-
-
-
-const ShortUrl = mongoose.model("ShortUrl",shortUrlSchema);
-
-export default ShortUrl
+export default ShortUrl;

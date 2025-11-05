@@ -2,7 +2,7 @@ import QRcode from "../model/QrCodeSchema.js";
 import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
-
+import {UAParser} from "ua-parser-js";
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId;
     const { destinationUrl, slugName, tags, protected: isProtected, password } = req.body;
@@ -130,10 +130,11 @@ export const updateShortUrl = async (req, res) => {
 
 export const redirectUrl = async (req, res) => {
     const { slugName } = req.params;
+
     if (!slugName) {
         return res.status(400).json({
-            message: "please enter a slug name to redirect"
-        })
+            message: "please enter a slug name to redirect",
+        });
     }
 
     try {
@@ -143,16 +144,59 @@ export const redirectUrl = async (req, res) => {
                 message: "Slug not found",
             });
         }
+
+        // Redirect to password protection if protected
         if (urlData.protected) {
             return res.redirect(301, `http://localhost:5173/protected/${urlData.slugName}`);
         }
+
+        // Gather analytics data
+        let ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
+        let country = "Unknown";
+        let city = "Unknown";
+
+        try {
+            const geoRes = await fetch(`https://ipwho.is/${ip}`);
+            const geoData = await geoRes.json();
+            if (geoData.success) {
+                country = geoData.country || "Unknown";
+                city = geoData.city || "Unknown";
+            }
+        } catch (error) {
+            console.error("Error fetching geo data:", error);
+        }
+
+        const parser = new UAParser(req.headers["user-agent"]);
+        const browserName = parser.getBrowser().name || "Unknown";
+        const deviceType = parser.getDevice().type || "Unknown";
+        const osName = parser.getOS().name || "Unknown";
+
+        const updateData = {
+            $inc: {
+                clicks: 1,
+                [`stats.${country}.count`]: 1,
+                [`stats.${country}.cities.${city}`]: 1,
+                [`deviceStats.${deviceType}`]: 1,
+                [`browserStats.${browserName}`]: 1,
+                [`osStats.${osName}`]: 1,
+            },
+            $set: {
+                lastClickedAt: new Date().toISOString(),
+            },
+        };
+
+        
+        await ShortUrl.updateOne({ slugName }, updateData);
+
+     
         return res.redirect(301, urlData.destinationUrl);
     } catch (error) {
+        console.error("Error during redirect:", error);
         return res.status(500).json({
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 export const searchUrl = async (req, res) => {
     try {
@@ -405,7 +449,7 @@ export const redirectProtectPages = async (req, res) => {
 
 
 export const saveQrCode = async (req, res) => {
-    const userId  = req.user.userId;
+    const userId = req.user.userId;
     const { qrUrl, destinationUrl } = req.body;
     if (!qrUrl && !destinationUrl) {
         return res.status(400).json({
@@ -413,7 +457,7 @@ export const saveQrCode = async (req, res) => {
         })
     }
     try {
-        const QrCode = await QRcode.create({ qrUrl, destinationUrl, userId:userId });
+        const QrCode = await QRcode.create({ qrUrl, destinationUrl, userId: userId });
         if (QrCode) {
             return res.status(200).json({
                 message: "successfully saved to data base",
@@ -453,18 +497,18 @@ export const getUserQrCodes = async (req, res) => {
     }
 };
 export const deleteQrCode = async (req, res) => {
-  const userId = req.user.userId;
-  const { id } = req.params;
+    const userId = req.user.userId;
+    const { id } = req.params;
 
-  try {
-    const qrCode = await QRcode.findOneAndDelete({ _id: id, userId });
+    try {
+        const qrCode = await QRcode.findOneAndDelete({ _id: id, userId });
 
-    if (!qrCode) {
-      return res.status(404).json({ message: "QR code not found or access denied" });
+        if (!qrCode) {
+            return res.status(404).json({ message: "QR code not found or access denied" });
+        }
+
+        return res.status(200).json({ message: "QR code deleted successfully" });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
     }
-
-    return res.status(200).json({ message: "QR code deleted successfully" });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
 };
