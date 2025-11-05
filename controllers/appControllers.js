@@ -3,7 +3,7 @@ import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
 import { UAParser } from "ua-parser-js";
-import ShortUrl from "../model/ShortUrl.js";
+ 
 import { v4 as uuid } from "uuid";
 
 export const createShortUrl = async (req, res) => {
