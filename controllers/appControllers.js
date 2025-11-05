@@ -3,13 +3,13 @@ import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
 import { UAParser } from "ua-parser-js";
- 
- 
+
+
+
 
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId;
     let { destinationUrl, slugName, tags, protected: isProtected, password } = req.body;
-
 
     if (!destinationUrl) {
         return res.status(400).json({ message: "Destination URL is required" });
@@ -34,6 +34,7 @@ export const createShortUrl = async (req, res) => {
 
         let finalPassword = null;
         if (isProtected) {
+            // Note: If you store the password as plain text, you should hash it here!
             finalPassword = password?.trim() || uuid().slice(0, 10);
         }
 
@@ -55,7 +56,6 @@ export const createShortUrl = async (req, res) => {
     } catch (err) {
         console.error("Error creating short URL:", err);
 
-
         if (err.code === 11000) {
             return res.status(409).json({
                 message: "Slug name already exists (DB unique index)"
@@ -67,9 +67,6 @@ export const createShortUrl = async (req, res) => {
         });
     }
 };
-
-
-
 
 
 export const updateShortUrl = async (req, res) => {
@@ -91,25 +88,26 @@ export const updateShortUrl = async (req, res) => {
 
 
         if (slugName && slugName !== existingUrl.slugName) {
-            const slugConflict = await ShortUrl.findOne({ slugName });
+            // Trim and normalize the slug for checking
+            const normalizedSlug = slugName.trim().toLowerCase();
+            const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
             if (slugConflict) {
                 return res.status(409).json({ message: "Slug name already exists" });
             }
+            existingUrl.slugName = normalizedSlug;
+
+            // Recalculate shortUrl only if slugName changed
+            const protocol = req.protocol;
+            const domainName = req.get("host");
+            existingUrl.shortUrl = `${protocol}://${domainName}/${normalizedSlug}`;
         }
 
 
         if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
 
 
-        if (slugName) {
-            const protocol = req.protocol;
-            const domainName = req.get("host");
-            existingUrl.slugName = slugName;
-            existingUrl.shortUrl = `${protocol}://${domainName}/${slugName}`;
-        }
-
-
         if (tags) {
+            // Ensure tags is handled correctly (array or single string, depending on your API contract)
             const newTags = Array.isArray(tags) ? tags : [tags];
             existingUrl.tags = newTags;
         }
@@ -118,10 +116,10 @@ export const updateShortUrl = async (req, res) => {
             existingUrl.protected = isProtected;
 
             if (isProtected) {
-
-                existingUrl.password = password && password.trim() !== "" ? password : uuid();
+                // Set password if protected, or generate a new one if input is empty
+                existingUrl.password = password && password.trim() !== "" ? password : uuid().slice(0, 10);
             } else {
-
+                // Clear password if no longer protected
                 existingUrl.password = null;
             }
         }
@@ -141,34 +139,49 @@ export const updateShortUrl = async (req, res) => {
 };
 
 
-
 export const redirectUrl = async (req, res) => {
     const { slugName } = req.params;
 
     if (!slugName) {
         return res.status(400).json({
-            message: "please enter a slug name to redirect",
+            message: "Please enter a slug name to redirect",
         });
     }
 
+    let urlData;
     try {
-        const urlData = await ShortUrl.findOne({ slugName });
+        // 1. Find the URL data first
+        urlData = await ShortUrl.findOne({ slugName });
         if (!urlData) {
             return res.status(404).json({
                 message: "Slug not found",
             });
         }
+    } catch (error) {
+        console.error("Error finding short URL:", error);
+        return res.status(500).json({
+            message: "Internal server error during lookup",
+        });
+    }
 
-        // Redirect to password protection if protected
-        if (urlData.protected) {
-            return res.redirect(301, `http://localhost:5173/protected/${urlData.slugName}`);
-        }
+    // 2. Handle protected URL redirect immediately
+    if (urlData.protected) {
+        // Keeping 301 here, as the protected link is a 'permanent' requirement
+        return res.redirect(301, `http://localhost:5173/protected/${urlData.slugName}`);
+    }
 
-        // Gather analytics data
+    // 3. Immediately send the final destination redirect response
+    //    *** FIX: Using 302 (Temporary Redirect) to ensure the browser hits the server every time ***
+    res.redirect(302, urlData.destinationUrl);
+
+    // 4. Perform analytics gathering ASYNCHRONOUSLY (Fire-and-Forget)
+    //    This code runs in the background AFTER the user has been redirected.
+    try {
         let ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
         let country = "Unknown";
         let city = "Unknown";
 
+        // --- Geo-location lookup ---
         try {
             const geoRes = await fetch(`https://ipwho.is/${ip}`);
             const geoData = await geoRes.json();
@@ -177,14 +190,16 @@ export const redirectUrl = async (req, res) => {
                 city = geoData.city || "Unknown";
             }
         } catch (error) {
-            console.error("Error fetching geo data:", error);
+            console.error(`[Analytics Error: ${slugName}] Error fetching geo data:`, error.message);
         }
 
+        // --- User Agent Parsing ---
         const parser = new UAParser(req.headers["user-agent"]);
         const browserName = parser.getBrowser().name || "Unknown";
         const deviceType = parser.getDevice().type || "Unknown";
         const osName = parser.getOS().name || "Unknown";
 
+        // --- Build the MongoDB Update Object ---
         const updateData = {
             $inc: {
                 clicks: 1,
@@ -199,19 +214,14 @@ export const redirectUrl = async (req, res) => {
             },
         };
 
-
+        // --- Execute the Database Update (in the background) ---
         await ShortUrl.updateOne({ slugName }, updateData);
 
-
-        return res.redirect(301, urlData.destinationUrl);
     } catch (error) {
-        console.error("Error during redirect:", error);
-        return res.status(500).json({
-            message: error.message,
-        });
+        // This handles any failures in the background analytics process (e.g., Mongoose error)
+        console.error(`[Analytics Fatal Error: ${slugName}] Failed to update stats:`, error);
     }
 };
-
 export const searchUrl = async (req, res) => {
     try {
         const userId = req.user.userId;

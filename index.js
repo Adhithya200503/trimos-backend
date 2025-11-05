@@ -32,9 +32,6 @@ app.post("/auth/logout",(req,res)=>{
 })
 app.post("/protected-url",redirectProtectPages)
 app.use("/",authenticator,appRoutes);
-app.get("/hello", authenticator, (req, res) => {
-    res.send(`hello user id ${req.user.userId}`);
-});
 app.get("/:slugName",redirectUrl);
 app.listen(PORT, (err) => {
     if (err) {
