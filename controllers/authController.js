@@ -44,7 +44,7 @@ export const login = async (req, res) => {
             res.cookie("token", token, {
                 httpOnly: true,
                 secure: true,
-                sameSite: "strict"
+                sameSite: "none"
             })
         const userData = isUserExist;
             return res.status(200).json({ message: "Signin successfull" , userData});
