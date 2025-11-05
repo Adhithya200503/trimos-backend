@@ -2,24 +2,29 @@ import QRcode from "../model/QrCodeSchema.js";
 import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
-import {UAParser} from "ua-parser-js";
+import { UAParser } from "ua-parser-js";
+import ShortUrl from "../model/ShortUrl.js";
+import { v4 as uuid } from "uuid";
+
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId;
-    const { destinationUrl, slugName, tags, protected: isProtected, password } = req.body;
+    let { destinationUrl, slugName, tags, protected: isProtected, password } = req.body;
 
-    if (!destinationUrl || !slugName) {
-        return res.status(400).json({
-            message: "Enter all required details",
-        });
+
+    if (!destinationUrl) {
+        return res.status(400).json({ message: "Destination URL is required" });
+    }
+
+    slugName = slugName?.trim().toLowerCase();
+    if (!slugName || slugName === "") {
+        slugName = uuid().slice(0, 6);
     }
 
     try {
 
         const isSlugNameExist = await ShortUrl.findOne({ slugName });
         if (isSlugNameExist) {
-            return res.status(409).json({
-                message: "Slug name already exists",
-            });
+            return res.status(409).json({ message: "Slug name already exists" });
         }
 
         const protocol = req.protocol;
@@ -29,9 +34,8 @@ export const createShortUrl = async (req, res) => {
 
         let finalPassword = null;
         if (isProtected) {
-            finalPassword = password && password.trim() !== "" ? password : uuid();
+            finalPassword = password?.trim() || uuid().slice(0, 10);
         }
-
 
         const createNewShortUrl = await ShortUrl.create({
             destinationUrl,
@@ -47,13 +51,23 @@ export const createShortUrl = async (req, res) => {
             message: "Short URL created successfully",
             data: createNewShortUrl,
         });
+
     } catch (err) {
         console.error("Error creating short URL:", err);
+
+
+        if (err.code === 11000) {
+            return res.status(409).json({
+                message: "Slug name already exists (DB unique index)"
+            });
+        }
+
         return res.status(500).json({
             message: err.message || "Internal server error",
         });
     }
 };
+
 
 
 
@@ -185,10 +199,10 @@ export const redirectUrl = async (req, res) => {
             },
         };
 
-        
+
         await ShortUrl.updateOne({ slugName }, updateData);
 
-     
+
         return res.redirect(301, urlData.destinationUrl);
     } catch (error) {
         console.error("Error during redirect:", error);
