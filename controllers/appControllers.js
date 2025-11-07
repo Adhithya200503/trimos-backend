@@ -166,12 +166,12 @@ export const redirectUrl = async (req, res) => {
         });
     }
     if(!urlData.isActive){
-        return res.redirect(301,`http://localhost:5173/in-active`)
+        return res.redirect(302,`http://localhost:5173/in-active`)
     }
     // 2. Handle protected URL redirect immediately
     if (urlData.protected) {
         // Keeping 301 here, as the protected link is a 'permanent' requirement
-        return res.redirect(301, `http://localhost:5173/protected/${urlData.slugName}`);
+        return res.redirect(302, `http://localhost:5173/protected/${urlData.slugName}`);
     }
 
     // 3. Immediately send the final destination redirect response
