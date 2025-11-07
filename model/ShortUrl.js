@@ -24,7 +24,11 @@ const shortUrlSchema = new mongoose.Schema({
   },
 
   tags: [String],
-
+  
+  isActive:{
+    type:Boolean,
+    default:true
+  },
   
 
   userId: {
