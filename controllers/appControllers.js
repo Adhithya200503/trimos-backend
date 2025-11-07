@@ -9,7 +9,7 @@ import { UAParser } from "ua-parser-js";
 
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId;
-    let { destinationUrl, slugName, tags, protected: isProtected, password , isActive } = req.body;
+    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
 
     if (!destinationUrl) {
         return res.status(400).json({ message: "Destination URL is required" });
@@ -46,7 +46,7 @@ export const createShortUrl = async (req, res) => {
             tags: Array.isArray(tags) ? tags : [],
             protected: !!isProtected,
             password: finalPassword,
-            isActive:isActive,
+            isActive: isActive,
         });
 
         return res.status(201).json({
@@ -73,7 +73,7 @@ export const createShortUrl = async (req, res) => {
 export const updateShortUrl = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
-    const { destinationUrl, slugName, tags, protected: isProtected, password ,isActive} = req.body;
+    const { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
 
     try {
 
@@ -106,7 +106,8 @@ export const updateShortUrl = async (req, res) => {
 
         if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
 
-        if(isActive) existingUrl.isActive = isActive;
+        if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
+
         if (tags) {
             // Ensure tags is handled correctly (array or single string, depending on your API contract)
             const newTags = Array.isArray(tags) ? tags : [tags];
