@@ -33,8 +33,9 @@ app.post("/auth/logout", (req, res) => {
   res.clearCookie("token").json({ message: "Logged out" });
 })
 app.post("/protected-url", redirectProtectPages)
-app.use("/", authenticator, appRoutes);
 app.get("/:slugName", redirectUrl);
+app.use("/", authenticator, appRoutes);
+
 app.listen(PORT, (err) => {
   if (err) {
     console.log(err);
