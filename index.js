@@ -19,25 +19,30 @@ const allowedOrigins = [
   "https://url-shortner-mkoi.onrender.com"
 ];
 
+
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
   })
 );
+app.options('*', cors({
+  origin: allowedOrigins,
+  credentials: true
+}))
 app.use(cookieParser());
 app.use("/auth", authRoutes);
-app.post("/auth/logout",(req,res)=>{
-    res.clearCookie("token").json({ message: "Logged out" });
+app.post("/auth/logout", (req, res) => {
+  res.clearCookie("token").json({ message: "Logged out" });
 })
-app.post("/protected-url",redirectProtectPages)
-app.use("/",authenticator,appRoutes);
-app.get("/:slugName",redirectUrl);
+app.post("/protected-url", redirectProtectPages)
+app.use("/", authenticator, appRoutes);
+app.get("/:slugName", redirectUrl);
 app.listen(PORT, (err) => {
-    if (err) {
-        console.log(err);
+  if (err) {
+    console.log(err);
 
-    } else {
-        console.log(`Server is running on Port : ${PORT}`);
-    }
+  } else {
+    console.log(`Server is running on Port : ${PORT}`);
+  }
 });
