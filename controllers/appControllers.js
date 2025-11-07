@@ -74,7 +74,7 @@ export const updateShortUrl = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
     const { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
-
+    
     try {
 
         const existingUrl = await ShortUrl.findById(id);
@@ -149,7 +149,7 @@ export const redirectUrl = async (req, res) => {
             message: "Please enter a slug name to redirect",
         });
     }
-
+   
     let urlData;
     try {
         // 1. Find the URL data first
@@ -165,7 +165,9 @@ export const redirectUrl = async (req, res) => {
             message: "Internal server error during lookup",
         });
     }
-
+    if(!urlData.isActive){
+        return res.redirect(301,`http://localhost:5173/in-active`)
+    }
     // 2. Handle protected URL redirect immediately
     if (urlData.protected) {
         // Keeping 301 here, as the protected link is a 'permanent' requirement
