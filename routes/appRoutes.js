@@ -16,4 +16,7 @@ router.delete("/delete/:slugName",deleteUrl);
 router.post("/qrcode",saveQrCode);
 router.get("/my-qrcodes",getUserQrCodes);
 router.delete("/qrcodes/:id",deleteQrCode);
+router.post("/auth/logout", (req, res) => {
+  res.clearCookie("token").json({ message: "Logged out" });
+})
 export default router;

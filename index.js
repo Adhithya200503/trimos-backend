@@ -29,9 +29,7 @@ app.use(
 
 app.use(cookieParser());
 app.use("/auth", authRoutes);
-app.post("/auth/logout", (req, res) => {
-  res.clearCookie("token").json({ message: "Logged out" });
-})
+
 app.post("/protected-url", redirectProtectPages)
 
 app.use("/api/v1", authenticator, appRoutes);
