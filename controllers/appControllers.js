@@ -559,7 +559,7 @@ export const addDomain = async (req, res) => {
     }
     user.customDomain.push(domainName);
     await user.save();
-    res.status(200).json({
+    return res.status(200).json({
       message: "Domain added successfully",
       domains: user.customDomain,
     });
@@ -575,8 +575,64 @@ export const getUserDomains = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.json({ domains: user.customDomain || [] });
+    return res.json({ domains: user.customDomain || [] });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
+
+
+export const filterShortUrls = async (req, res) => {
+  const { sort } = req.params;
+  const userId = req.user.userId;
+
+  if (!sort) {
+    return res.status(400).json({
+      message: "Please specify a sort filter (e.g., active, inactive, protected, notprotected)"
+    });
+  }
+
+  let filter = { userId };
+
+  switch (sort) {
+    case "active":
+      filter.isActive = true;
+      break;
+
+    case "inactive":
+      filter.isActive = false;
+      break;
+
+    case "protected":
+      filter.protected = true;
+      break;
+
+    case "notprotected":
+      filter.protected = false;
+      break;
+
+    default:
+      return res.status(400).json({
+        message: "Invalid sort value. Use one of: active, inactive, protected, notprotected"
+      });
+  }
+
+  try {
+    const data = await ShortUrl.find(filter);
+
+    if (data.length === 0) {
+      return res.status(404).json({
+        message: `No ${sort} URLs found`
+      });
+    }
+
+    return res.status(200).json({
+      results: data
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
