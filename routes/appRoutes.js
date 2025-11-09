@@ -1,5 +1,5 @@
 import express from "express";
-import { createShortUrl, deleteQrCode, deleteUrl, getAllTags, getMatchedUrls, getUrlBySlugName, getUserData, getUserQrCodes, saveQrCode, searchUrl, updateShortUrl, UserCreatedShortLinksList } from "../controllers/appControllers.js";
+import { addDomain, createShortUrl, deleteQrCode, deleteUrl, getAllTags, getMatchedUrls, getUrlBySlugName, getUserData, getUserQrCodes, saveQrCode, searchUrl, updateShortUrl, UserCreatedShortLinksList } from "../controllers/appControllers.js";
 
 
 const router = express.Router();
@@ -16,6 +16,7 @@ router.delete("/delete/:slugName",deleteUrl);
 router.post("/qrcode",saveQrCode);
 router.get("/my-qrcodes",getUserQrCodes);
 router.delete("/qrcodes/:id",deleteQrCode);
+router.post("/add-domain",addDomain);
 router.post("/auth/logout", (req, res) => {
   res.clearCookie("token").json({ message: "Logged out" });
 })
