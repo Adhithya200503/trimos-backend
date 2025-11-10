@@ -1,31 +1,53 @@
 import mongoose from "mongoose";
 
 
+import mongoose from "mongoose";
+
 const userSchema = new mongoose.Schema({
-    username:{
-        type:String,
-        required:true,
-        unique:true,
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+
+  password: {
+    type: String,
+    required: true,
+  },
+
+
+  customDomain: [
+    {
+      name: {
+        type: String,
+        required: true,
+      },
+      verified: {
+        type: Boolean,
+        default: false,
+      },
+      cnameTarget: {
+        type: String,
+      },
+      addedAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
-    email:{
-        type:String,
-        required:true,
-        unique:true,
-    },
-    password:{
-        type:String,
-        required:true,
-        unique:true
-    },
-    customDomain:{
-        type:[String],
-        unique:true
-    },
-    createdAt:{
-        type:Date,
-        default:Date.now
-    }
-})
+  ],
+
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 
 
 const User = mongoose.model("User",userSchema);

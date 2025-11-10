@@ -3,7 +3,7 @@ import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
 import { UAParser } from "ua-parser-js";
-
+import dns from "dns";
 
 
 
@@ -546,25 +546,71 @@ export const addDomain = async (req, res) => {
   const userId = req.user.userId;
   const { domainName } = req.body;
 
+  if (!domainName) {
+    return res.status(400).json({ message: "Please provide a domain name." });
+  }
+
   try {
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found." });
     }
+
+    // Ensure customDomain is an array
     if (!Array.isArray(user.customDomain)) {
       user.customDomain = [];
     }
-    if (user.customDomain.includes(domainName)) {
-      return res.status(400).json({ message: "Domain already exists" });
+
+    // Prevent duplicates
+    if (user.customDomain.find((d) => d.name === domainName)) {
+      return res.status(400).json({ message: "Domain already exists." });
     }
-    user.customDomain.push(domainName);
+
+    // ✅ Step 1: Try resolving the domain’s CNAME record
+    let cnameRecords = [];
+    try {
+      cnameRecords = await dns.resolveCname(domainName);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Unable to resolve CNAME record. Please check your DNS settings and try again.",
+        details: err.message,
+      });
+    }
+
+    // ✅ Step 2: Verify that it points to your Render domain
+    const expectedTarget = "trim-url-gpxt.onrender.com";
+    const isValid = cnameRecords.some((r) => r === expectedTarget);
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: `CNAME record must point to '${expectedTarget}'.`,
+        foundRecords: cnameRecords,
+      });
+    }
+
+    // ✅ Step 3: Save verified domain
+    user.customDomain.push({
+      name: domainName,
+      verified: true,
+      cnameTarget: expectedTarget,
+      addedAt: new Date(),
+    });
+
     await user.save();
-    return res.status(200).json({
-      message: "Domain added successfully",
+
+    res.status(200).json({
+      success: true,
+      message: "Domain verified and added successfully!",
       domains: user.customDomain,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
