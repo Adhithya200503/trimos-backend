@@ -570,6 +570,7 @@ export const addDomain = async (req, res) => {
     let cnameRecords = [];
     try {
       cnameRecords = await dns.resolveCname(domainName);
+      console.log("CNAME:", cnameRecords);
     } catch (err) {
       return res.status(400).json({
         success: false,
