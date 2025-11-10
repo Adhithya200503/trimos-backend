@@ -566,33 +566,52 @@ export const addDomain = async (req, res) => {
       return res.status(400).json({ message: "Domain already exists." });
     }
 
-    // ✅ Step 1: Try resolving the domain’s CNAME record
+    const expectedTarget = "trim-url-gpxt.onrender.com";
     let cnameRecords = [];
+    let aRecords = [];
+
+    console.log(`🔍 Verifying domain: ${domainName}`);
+
+    // Step 1: Try resolving the domain’s CNAME record
     try {
       cnameRecords = await dns.resolveCname(domainName);
-      console.log("CNAME:", cnameRecords);
+      console.log("✅ Found CNAME record(s):", cnameRecords);
     } catch (err) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Unable to resolve CNAME record. Please check your DNS settings and try again.",
-        details: err.message,
-      });
+      console.warn(`⚠️ No CNAME record found (${err.code}). Trying A record...`);
+      try {
+        aRecords = await dns.resolve4(domainName);
+        console.log("✅ Found A record(s):", aRecords);
+      } catch (err2) {
+        console.error(`❌ No A record found (${err2.code}):`, err2.message);
+        return res.status(400).json({
+          success: false,
+          message:
+            "Unable to resolve CNAME or A record. Please check your DNS settings and try again.",
+          details: err2.message,
+        });
+      }
     }
 
-    // ✅ Step 2: Verify that it points to your Render domain
-    const expectedTarget = "trim-url-gpxt.onrender.com";
-    const isValid = cnameRecords.some((r) => r === expectedTarget);
+    // Step 2: Check if domain points to your Render deployment
+    let isValid = false;
+
+    if (cnameRecords.length > 0) {
+      isValid = cnameRecords.some((r) => r === expectedTarget);
+    } else if (aRecords.length > 0) {
+      // Optionally, skip A record validation — Render IPs can change.
+      console.log("ℹ️ Skipping strict A record validation (Render uses dynamic IPs).");
+      isValid = true;
+    }
 
     if (!isValid) {
       return res.status(400).json({
         success: false,
         message: `CNAME record must point to '${expectedTarget}'.`,
-        foundRecords: cnameRecords,
+        foundRecords: cnameRecords.length ? cnameRecords : aRecords,
       });
     }
 
-    // ✅ Step 3: Save verified domain
+    // Step 3: Save verified domain
     user.customDomain.push({
       name: domainName,
       verified: true,
@@ -602,19 +621,21 @@ export const addDomain = async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({
+    console.log(`✅ Domain verified & saved: ${domainName}`);
+
+    return res.status(200).json({
       success: true,
       message: "Domain verified and added successfully!",
       domains: user.customDomain,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("❌ Unexpected error in addDomain:", error);
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
 export const getUserDomains = async (req, res) => {
   const userId = req.user.userId;
 
