@@ -3,7 +3,8 @@ import ShortUrl from "../model/ShortUrl.js";
 import User from "../model/User.js";
 import { v4 as uuid } from "uuid"
 import { UAParser } from "ua-parser-js";
-import dns from "dns";
+import { resolveCname, resolve4 } from "dns/promises";
+
 
 
 
@@ -542,6 +543,8 @@ export const deleteQrCode = async (req, res) => {
 };
 
 
+
+
 export const addDomain = async (req, res) => {
   const userId = req.user.userId;
   const { domainName } = req.body;
@@ -556,7 +559,6 @@ export const addDomain = async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // Ensure customDomain is an array
     if (!Array.isArray(user.customDomain)) {
       user.customDomain = [];
     }
@@ -566,52 +568,39 @@ export const addDomain = async (req, res) => {
       return res.status(400).json({ message: "Domain already exists." });
     }
 
-    const expectedTarget = "trim-url-gpxt.onrender.com";
-    let cnameRecords = [];
-    let aRecords = [];
-
-    console.log(`🔍 Verifying domain: ${domainName}`);
-
-    // Step 1: Try resolving the domain’s CNAME record
+    // ✅ Step 1: Resolve the domain’s CNAME
+    console.log(`🔍 Verifying CNAME for: ${domainName}`);
+    let cnameRecords;
     try {
-      cnameRecords = await dns.resolveCname(domainName);
-      console.log("✅ Found CNAME record(s):", cnameRecords);
+      cnameRecords = await resolveCname(domainName);
+      console.log("✅ Found CNAME records:", cnameRecords);
     } catch (err) {
-      console.warn(`⚠️ No CNAME record found (${err.code}). Trying A record...`);
-      try {
-        aRecords = await dns.resolve4(domainName);
-        console.log("✅ Found A record(s):", aRecords);
-      } catch (err2) {
-        console.error(`❌ No A record found (${err2.code}):`, err2.message);
-        return res.status(400).json({
-          success: false,
-          message:
-            "Unable to resolve CNAME or A record. Please check your DNS settings and try again.",
-          details: err2.message,
-        });
-      }
-    }
-
-    // Step 2: Check if domain points to your Render deployment
-    let isValid = false;
-
-    if (cnameRecords.length > 0) {
-      isValid = cnameRecords.some((r) => r === expectedTarget);
-    } else if (aRecords.length > 0) {
-      // Optionally, skip A record validation — Render IPs can change.
-      console.log("ℹ️ Skipping strict A record validation (Render uses dynamic IPs).");
-      isValid = true;
-    }
-
-    if (!isValid) {
+      console.error("❌ CNAME lookup failed:", err.message);
       return res.status(400).json({
         success: false,
-        message: `CNAME record must point to '${expectedTarget}'.`,
-        foundRecords: cnameRecords.length ? cnameRecords : aRecords,
+        message:
+          "Unable to resolve CNAME record. Please check your DNS settings and try again.",
+        details: err.message,
       });
     }
 
-    // Step 3: Save verified domain
+    // ✅ Step 2: Check CNAME target
+    const expectedTarget = "trim-url-gpxt.onrender.com";
+
+    const isValid = cnameRecords.some(
+      (record) => record === expectedTarget || record.endsWith(expectedTarget)
+    );
+
+    if (!isValid) {
+      console.warn("⚠️ Invalid CNAME target found:", cnameRecords);
+      return res.status(400).json({
+        success: false,
+        message: `CNAME record must point to '${expectedTarget}'.`,
+        foundRecords: cnameRecords,
+      });
+    }
+
+    // ✅ Step 3: Save verified domain
     user.customDomain.push({
       name: domainName,
       verified: true,
@@ -636,6 +625,7 @@ export const addDomain = async (req, res) => {
     });
   }
 };
+
 export const getUserDomains = async (req, res) => {
   const userId = req.user.userId;
 
