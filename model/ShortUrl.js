@@ -6,6 +6,11 @@ const shortUrlSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  domain:{
+    type:String,
+    default:"trim-url-gpxt.onrender.com"
+
+    },
   shortUrl: { type: String, required: true, unique: true },
   slugName: {
     type: String,

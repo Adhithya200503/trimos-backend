@@ -7,19 +7,16 @@ import { resolveCname, resolve4 } from "dns/promises";
 
 
 
-
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId;
-    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
+    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain } = req.body;
 
     if (!destinationUrl) {
         return res.status(400).json({ message: "Destination URL is required" });
     }
 
-    slugName = slugName?.trim().toLowerCase();
-    if (!slugName || slugName === "") {
-        slugName = uuid().slice(0, 6);
-    }
+
+    slugName = slugName?.trim().toLowerCase() || uuid().slice(0, 6);
 
     try {
 
@@ -28,31 +25,33 @@ export const createShortUrl = async (req, res) => {
             return res.status(409).json({ message: "Slug name already exists" });
         }
 
-        const protocol = req.protocol;
-        const domainName = req.get("host");
-        const shortUrl = `${protocol}://${domainName}/${slugName}`;
+        const domainName = domain?.trim() || "trim-url-gpxt.onrender.com";
 
 
-        let finalPassword = null;
+        const shortUrl = `https://${domainName}/${slugName}`;
+
+
+        let finalPassword = "";
         if (isProtected) {
-            // Note: If you store the password as plain text, you should hash it here!
             finalPassword = password?.trim() || uuid().slice(0, 10);
         }
 
-        const createNewShortUrl = await ShortUrl.create({
+
+        const newShortUrl = await ShortUrl.create({
             destinationUrl,
+            domain: domainName,
             shortUrl,
             slugName,
             userId,
             tags: Array.isArray(tags) ? tags : [],
             protected: !!isProtected,
             password: finalPassword,
-            isActive: isActive,
+            isActive: isActive !== undefined ? isActive : true,
         });
 
         return res.status(201).json({
             message: "Short URL created successfully",
-            data: createNewShortUrl,
+            data: newShortUrl,
         });
 
     } catch (err) {
@@ -71,11 +70,12 @@ export const createShortUrl = async (req, res) => {
 };
 
 
+
 export const updateShortUrl = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
     const { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
-    
+
     try {
 
         const existingUrl = await ShortUrl.findById(id);
@@ -90,7 +90,7 @@ export const updateShortUrl = async (req, res) => {
 
 
         if (slugName && slugName !== existingUrl.slugName) {
-            // Trim and normalize the slug for checking
+
             const normalizedSlug = slugName.trim().toLowerCase();
             const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
             if (slugConflict) {
@@ -98,7 +98,7 @@ export const updateShortUrl = async (req, res) => {
             }
             existingUrl.slugName = normalizedSlug;
 
-            // Recalculate shortUrl only if slugName changed
+
             const protocol = req.protocol;
             const domainName = req.get("host");
             existingUrl.shortUrl = `${protocol}://${domainName}/${normalizedSlug}`;
@@ -110,7 +110,7 @@ export const updateShortUrl = async (req, res) => {
         if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
 
         if (tags) {
-            // Ensure tags is handled correctly (array or single string, depending on your API contract)
+
             const newTags = Array.isArray(tags) ? tags : [tags];
             existingUrl.tags = newTags;
         }
@@ -119,10 +119,10 @@ export const updateShortUrl = async (req, res) => {
             existingUrl.protected = isProtected;
 
             if (isProtected) {
-                // Set password if protected, or generate a new one if input is empty
+
                 existingUrl.password = password && password.trim() !== "" ? password : uuid().slice(0, 10);
             } else {
-                // Clear password if no longer protected
+
                 existingUrl.password = null;
             }
         }
@@ -142,58 +142,135 @@ export const updateShortUrl = async (req, res) => {
 };
 
 
+// export const redirectUrl = async (req, res) => {
+//   const { slugName } = req.params;
+//   if (!slugName) return res.status(400).json({ message: "Slug missing" });
+
+//   const urlData = await ShortUrl.findOne({ slugName });
+//   if (!urlData) return res.status(404).json({ message: "Not found" });
+
+//   if (!urlData.isActive)
+//     return res.redirect(
+//       302,
+//       `${process.env.MODE === "dev"
+//         ? "http://localhost:5173"
+//         : process.env.FRONTEND_END_URL}/in-active`
+//     );
+
+//   // Immediately increment clicks
+//   await ShortUrl.updateOne({ slugName }, { $inc: { clicks: 1 } });
+
+//   // Then redirect
+//   res.redirect(302, urlData.destinationUrl);
+
+//   // Optional: fire detailed analytics (fire-and-forget)
+//   (async () => {
+//     try {
+//       const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
+//       const geoRes = await fetch(`https://ipwho.is/${ip}`);
+//       const geoData = await geoRes.json();
+
+//       const country = geoData?.country || "Unknown";
+//       const city = geoData?.city || "Unknown";
+
+//       const parser = new UAParser(req.headers["user-agent"]);
+//       const browser = parser.getBrowser().name || "Unknown";
+//       const device = parser.getDevice().type || "Unknown";
+//       const os = parser.getOS().name || "Unknown";
+
+//       const analyticsUpdate = {
+//         $inc: {
+//           [`stats.${country}.count`]: 1,
+//           [`stats.${country}.cities.${city}`]: 1,
+//           [`deviceStats.${device}`]: 1,
+//           [`browserStats.${browser}`]: 1,
+//           [`osStats.${os}`]: 1,
+//         },
+//         $set: { lastClickedAt: new Date().toISOString() },
+//       };
+
+//       await ShortUrl.updateOne({ slugName }, analyticsUpdate);
+//     } catch (err) {
+//       console.error(`[Analytics Error: ${slugName}]`, err);
+//     }
+//   })();
+// };
+
+
 export const redirectUrl = async (req, res) => {
-  const { slugName } = req.params;
-  if (!slugName) return res.status(400).json({ message: "Slug missing" });
-
-  const urlData = await ShortUrl.findOne({ slugName });
-  if (!urlData) return res.status(404).json({ message: "Not found" });
-
-  if (!urlData.isActive)
-    return res.redirect(
-      302,
-      `${process.env.MODE === "dev"
-        ? "http://localhost:5173"
-        : process.env.FRONTEND_END_URL}/in-active`
-    );
-
-  // Immediately increment clicks
-  await ShortUrl.updateOne({ slugName }, { $inc: { clicks: 1 } });
-
-  // Then redirect
-  res.redirect(302, urlData.destinationUrl);
-
-  // Optional: fire detailed analytics (fire-and-forget)
-  (async () => {
     try {
-      const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
-      const geoRes = await fetch(`https://ipwho.is/${ip}`);
-      const geoData = await geoRes.json();
+        const { slugName } = req.params;
+        if (!slugName) {
+            return res.status(400).json({ message: "Slug name missing" });
+        }
 
-      const country = geoData?.country || "Unknown";
-      const city = geoData?.city || "Unknown";
+        const hostDomain = req.headers.host || "trim-url-gpxt.onrender.com";
 
-      const parser = new UAParser(req.headers["user-agent"]);
-      const browser = parser.getBrowser().name || "Unknown";
-      const device = parser.getDevice().type || "Unknown";
-      const os = parser.getOS().name || "Unknown";
+        const urlData = await ShortUrl.findOne({
+            slugName,
+            $or: [
+                { domain: hostDomain },
+                { domain: "trim-url-gpxt.onrender.com" },
+                { domain: { $exists: false } },
+                { domain: "" },
+            ],
+        });
 
-      const analyticsUpdate = {
-        $inc: {
-          [`stats.${country}.count`]: 1,
-          [`stats.${country}.cities.${city}`]: 1,
-          [`deviceStats.${device}`]: 1,
-          [`browserStats.${browser}`]: 1,
-          [`osStats.${os}`]: 1,
-        },
-        $set: { lastClickedAt: new Date().toISOString() },
-      };
+        if (!urlData) {
+            return res.status(404).json({ message: "Short URL not found" });
+        }
 
-      await ShortUrl.updateOne({ slugName }, analyticsUpdate);
+        if (!urlData.isActive) {
+            const redirectBase =
+                process.env.MODE === "dev"
+                    ? "http://localhost:5173"
+                    : process.env.FRONTEND_END_URL;
+            return res.redirect(302, `${redirectBase}/in-active`);
+        }
+
+
+        await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
+
+        res.redirect(302, urlData.destinationUrl);
+
+
+        (async () => {
+            try {
+                const ip =
+                    req.headers["x-forwarded-for"]?.split(",")[0] ||
+                    req.socket.remoteAddress ||
+                    "";
+                const geoRes = await fetch(`https://ipwho.is/${ip}`);
+                const geoData = await geoRes.json();
+
+                const country = geoData?.country || "Unknown";
+                const city = geoData?.city || "Unknown";
+
+                const parser = new UAParser(req.headers["user-agent"]);
+                const browser = parser.getBrowser().name || "Unknown";
+                const device = parser.getDevice().type || "Unknown";
+                const os = parser.getOS().name || "Unknown";
+
+                const analyticsUpdate = {
+                    $inc: {
+                        [`stats.${country}.count`]: 1,
+                        [`stats.${country}.cities.${city}`]: 1,
+                        [`deviceStats.${device}`]: 1,
+                        [`browserStats.${browser}`]: 1,
+                        [`osStats.${os}`]: 1,
+                    },
+                    $set: { lastClickedAt: new Date().toISOString() },
+                };
+
+                await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
+            } catch (err) {
+                console.error(`[Analytics Error: ${slugName}]`, err);
+            }
+        })();
     } catch (err) {
-      console.error(`[Analytics Error: ${slugName}]`, err);
+        console.error("Redirect Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-  })();
 };
 
 export const searchUrl = async (req, res) => {
@@ -515,151 +592,151 @@ export const deleteQrCode = async (req, res) => {
 
 
 export const addDomain = async (req, res) => {
-  const userId = req.user.userId;
-  const { domainName } = req.body;
+    const userId = req.user.userId;
+    const { domainName } = req.body;
 
-  if (!domainName) {
-    return res.status(400).json({ message: "Please provide a domain name." });
-  }
-
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
+    if (!domainName) {
+        return res.status(400).json({ message: "Please provide a domain name." });
     }
 
-    if (!Array.isArray(user.customDomain)) {
-      user.customDomain = [];
-    }
-
-    // Prevent duplicates
-    if (user.customDomain.find((d) => d.name === domainName)) {
-      return res.status(400).json({ message: "Domain already exists." });
-    }
-
-    // ✅ Step 1: Resolve the domain’s CNAME
-    console.log(`🔍 Verifying CNAME for: ${domainName}`);
-    let cnameRecords;
     try {
-      cnameRecords = await resolveCname(domainName);
-      console.log("✅ Found CNAME records:", cnameRecords);
-    } catch (err) {
-      console.error("❌ CNAME lookup failed:", err.message);
-      return res.status(400).json({
-        success: false,
-        message:
-          "Unable to resolve CNAME record. Please check your DNS settings and try again.",
-        details: err.message,
-      });
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        if (!Array.isArray(user.customDomain)) {
+            user.customDomain = [];
+        }
+
+        // Prevent duplicates
+        if (user.customDomain.find((d) => d.name === domainName)) {
+            return res.status(400).json({ message: "Domain already exists." });
+        }
+
+        // ✅ Step 1: Resolve the domain’s CNAME
+        console.log(`🔍 Verifying CNAME for: ${domainName}`);
+        let cnameRecords;
+        try {
+            cnameRecords = await resolveCname(domainName);
+            console.log("✅ Found CNAME records:", cnameRecords);
+        } catch (err) {
+            console.error("❌ CNAME lookup failed:", err.message);
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Unable to resolve CNAME record. Please check your DNS settings and try again.",
+                details: err.message,
+            });
+        }
+
+        // ✅ Step 2: Check CNAME target
+        const expectedTarget = "trim-url-gpxt.onrender.com";
+
+        const isValid = cnameRecords.some(
+            (record) => record === expectedTarget || record.endsWith(expectedTarget)
+        );
+
+        if (!isValid) {
+            console.warn("⚠️ Invalid CNAME target found:", cnameRecords);
+            return res.status(400).json({
+                success: false,
+                message: `CNAME record must point to '${expectedTarget}'.`,
+                foundRecords: cnameRecords,
+            });
+        }
+
+        // ✅ Step 3: Save verified domain
+        user.customDomain.push({
+            name: domainName,
+            verified: true,
+            cnameTarget: expectedTarget,
+            addedAt: new Date(),
+        });
+
+        await user.save();
+
+        console.log(`✅ Domain verified & saved: ${domainName}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Domain verified and added successfully!",
+            domains: user.customDomain,
+        });
+    } catch (error) {
+        console.error("❌ Unexpected error in addDomain:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
-
-    // ✅ Step 2: Check CNAME target
-    const expectedTarget = "trim-url-gpxt.onrender.com";
-
-    const isValid = cnameRecords.some(
-      (record) => record === expectedTarget || record.endsWith(expectedTarget)
-    );
-
-    if (!isValid) {
-      console.warn("⚠️ Invalid CNAME target found:", cnameRecords);
-      return res.status(400).json({
-        success: false,
-        message: `CNAME record must point to '${expectedTarget}'.`,
-        foundRecords: cnameRecords,
-      });
-    }
-
-    // ✅ Step 3: Save verified domain
-    user.customDomain.push({
-      name: domainName,
-      verified: true,
-      cnameTarget: expectedTarget,
-      addedAt: new Date(),
-    });
-
-    await user.save();
-
-    console.log(`✅ Domain verified & saved: ${domainName}`);
-
-    return res.status(200).json({
-      success: true,
-      message: "Domain verified and added successfully!",
-      domains: user.customDomain,
-    });
-  } catch (error) {
-    console.error("❌ Unexpected error in addDomain:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
 
 export const getUserDomains = async (req, res) => {
-  const userId = req.user.userId;
+    const userId = req.user.userId;
 
-  try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
 
-    return res.json({ domains: user.customDomain || [] });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
+        return res.json({ domains: user.customDomain || [] });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
 };
 
 
 export const filterShortUrls = async (req, res) => {
-  const { sort } = req.params;
-  const userId = req.user.userId;
+    const { sort } = req.params;
+    const userId = req.user.userId;
 
-  if (!sort) {
-    return res.status(400).json({
-      message: "Please specify a sort filter (e.g., active, inactive, protected, notprotected)"
-    });
-  }
-
-  let filter = { userId };
-
-  switch (sort) {
-    case "active":
-      filter.isActive = true;
-      break;
-
-    case "inactive":
-      filter.isActive = false;
-      break;
-
-    case "protected":
-      filter.protected = true;
-      break;
-
-    case "notprotected":
-      filter.protected = false;
-      break;
-
-    default:
-      return res.status(400).json({
-        message: "Invalid sort value. Use one of: active, inactive, protected, notprotected"
-      });
-  }
-
-  try {
-    const data = await ShortUrl.find(filter);
-
-    if (data.length === 0) {
-      return res.status(404).json({
-        message: `No ${sort} URLs found`
-      });
+    if (!sort) {
+        return res.status(400).json({
+            message: "Please specify a sort filter (e.g., active, inactive, protected, notprotected)"
+        });
     }
 
-    return res.status(200).json({
-      results: data
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: error.message
-    });
-  }
+    let filter = { userId };
+
+    switch (sort) {
+        case "active":
+            filter.isActive = true;
+            break;
+
+        case "inactive":
+            filter.isActive = false;
+            break;
+
+        case "protected":
+            filter.protected = true;
+            break;
+
+        case "notprotected":
+            filter.protected = false;
+            break;
+
+        default:
+            return res.status(400).json({
+                message: "Invalid sort value. Use one of: active, inactive, protected, notprotected"
+            });
+    }
+
+    try {
+        const data = await ShortUrl.find(filter);
+
+        if (data.length === 0) {
+            return res.status(404).json({
+                message: `No ${sort} URLs found`
+            });
+        }
+
+        return res.status(200).json({
+            results: data
+        });
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message
+        });
+    }
 };
 
