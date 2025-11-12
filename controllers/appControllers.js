@@ -143,90 +143,59 @@ export const updateShortUrl = async (req, res) => {
 
 
 export const redirectUrl = async (req, res) => {
-    const { slugName } = req.params;
+  const { slugName } = req.params;
+  if (!slugName) return res.status(400).json({ message: "Slug missing" });
 
-    if (!slugName) {
-        return res.status(400).json({
-            message: "Please enter a slug name to redirect",
-        });
-    }
-   
-    let urlData;
+  const urlData = await ShortUrl.findOne({ slugName });
+  if (!urlData) return res.status(404).json({ message: "Not found" });
+
+  if (!urlData.isActive)
+    return res.redirect(
+      302,
+      `${process.env.MODE === "dev"
+        ? "http://localhost:5173"
+        : process.env.FRONTEND_END_URL}/in-active`
+    );
+
+  // Immediately increment clicks
+  await ShortUrl.updateOne({ slugName }, { $inc: { clicks: 1 } });
+
+  // Then redirect
+  res.redirect(302, urlData.destinationUrl);
+
+  // Optional: fire detailed analytics (fire-and-forget)
+  (async () => {
     try {
-        // 1. Find the URL data first
-        urlData = await ShortUrl.findOne({ slugName });
-        if (!urlData) {
-            return res.status(404).json({
-                message: "Slug not found",
-            });
-        }
-    } catch (error) {
-        console.error("Error finding short URL:", error);
-        return res.status(500).json({
-            message: "Internal server error during lookup",
-        });
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
+      const geoRes = await fetch(`https://ipwho.is/${ip}`);
+      const geoData = await geoRes.json();
+
+      const country = geoData?.country || "Unknown";
+      const city = geoData?.city || "Unknown";
+
+      const parser = new UAParser(req.headers["user-agent"]);
+      const browser = parser.getBrowser().name || "Unknown";
+      const device = parser.getDevice().type || "Unknown";
+      const os = parser.getOS().name || "Unknown";
+
+      const analyticsUpdate = {
+        $inc: {
+          [`stats.${country}.count`]: 1,
+          [`stats.${country}.cities.${city}`]: 1,
+          [`deviceStats.${device}`]: 1,
+          [`browserStats.${browser}`]: 1,
+          [`osStats.${os}`]: 1,
+        },
+        $set: { lastClickedAt: new Date().toISOString() },
+      };
+
+      await ShortUrl.updateOne({ slugName }, analyticsUpdate);
+    } catch (err) {
+      console.error(`[Analytics Error: ${slugName}]`, err);
     }
-    if(!urlData.isActive){
-        return res.redirect(302,`${process.env.MODE=="dev"?"http://localhost:5173":process.env.FRONTEND_END_URL}/in-active`)
-    }
-    // 2. Handle protected URL redirect immediately
-    if (urlData.protected) {
-        // Keeping 301 here, as the protected link is a 'permanent' requirement
-        return res.redirect(302, `${process.env.MODE=="dev"?"http://localhost:5173":process.env.FRONTEND_END_URL}/protected/${urlData.slugName}`);
-    }
-
-    // 3. Immediately send the final destination redirect response
-    //    *** FIX: Using 302 (Temporary Redirect) to ensure the browser hits the server every time ***
-    res.redirect(302, urlData.destinationUrl);
-
-    // 4. Perform analytics gathering ASYNCHRONOUSLY (Fire-and-Forget)
-    //    This code runs in the background AFTER the user has been redirected.
-    try {
-        let ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
-        let country = "Unknown";
-        let city = "Unknown";
-
-        // --- Geo-location lookup ---
-        try {
-            const geoRes = await fetch(`https://ipwho.is/${ip}`);
-            const geoData = await geoRes.json();
-            if (geoData.success) {
-                country = geoData.country || "Unknown";
-                city = geoData.city || "Unknown";
-            }
-        } catch (error) {
-            console.error(`[Analytics Error: ${slugName}] Error fetching geo data:`, error.message);
-        }
-
-        // --- User Agent Parsing ---
-        const parser = new UAParser(req.headers["user-agent"]);
-        const browserName = parser.getBrowser().name || "Unknown";
-        const deviceType = parser.getDevice().type || "Unknown";
-        const osName = parser.getOS().name || "Unknown";
-
-        // --- Build the MongoDB Update Object ---
-        const updateData = {
-            $inc: {
-                clicks: 1,
-                [`stats.${country}.count`]: 1,
-                [`stats.${country}.cities.${city}`]: 1,
-                [`deviceStats.${deviceType}`]: 1,
-                [`browserStats.${browserName}`]: 1,
-                [`osStats.${osName}`]: 1,
-            },
-            $set: {
-                lastClickedAt: new Date().toISOString(),
-            },
-        };
-
-        // --- Execute the Database Update (in the background) ---
-        await ShortUrl.updateOne({ slugName }, updateData);
-
-    } catch (error) {
-        // This handles any failures in the background analytics process (e.g., Mongoose error)
-        console.error(`[Analytics Fatal Error: ${slugName}] Failed to update stats:`, error);
-    }
+  })();
 };
+
 export const searchUrl = async (req, res) => {
     try {
         const userId = req.user.userId;
