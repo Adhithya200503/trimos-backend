@@ -208,7 +208,7 @@ export const redirectUrl = async (req, res) => {
         if (!slugName) {
             return res.status(400).json({ message: "Slug name missing" });
         }
-
+        
         const hostDomain = req.headers.host || "trim-url-gpxt.onrender.com";
 
         const urlData = await ShortUrl.findOne({
@@ -224,7 +224,9 @@ export const redirectUrl = async (req, res) => {
         if (!urlData) {
             return res.status(404).json({ message: "Short URL not found" });
         }
-
+        if(urlData.protected){
+            return res.redirect(302,`https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`);
+        }
         if (!urlData.isActive) {
             const redirectBase =
                 process.env.MODE === "dev"
