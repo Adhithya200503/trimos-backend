@@ -72,74 +72,79 @@ export const createShortUrl = async (req, res) => {
 
 
 export const updateShortUrl = async (req, res) => {
-    const userId = req.user.userId;
-    const { id } = req.params;
-    const { destinationUrl, slugName, tags, protected: isProtected, password, isActive } = req.body;
+  const userId = req.user.userId;
+  const { id } = req.params;
+  const {
+    destinationUrl,
+    slugName,
+    tags,
+    protected: isProtected,
+    password,
+    isActive,
+    domain,
+  } = req.body;
 
-    try {
-
-        const existingUrl = await ShortUrl.findById(id);
-        if (!existingUrl) {
-            return res.status(404).json({ message: "Short URL not found" });
-        }
-
-
-        if (existingUrl.userId.toString() !== userId) {
-            return res.status(403).json({ message: "Not authorized to update this link" });
-        }
-
-
-        if (slugName && slugName !== existingUrl.slugName) {
-
-            const normalizedSlug = slugName.trim().toLowerCase();
-            const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
-            if (slugConflict) {
-                return res.status(409).json({ message: "Slug name already exists" });
-            }
-            existingUrl.slugName = normalizedSlug;
-
-
-            const protocol = req.protocol;
-            const domainName = req.get("host");
-            existingUrl.shortUrl = `${protocol}://${domainName}/${normalizedSlug}`;
-        }
-
-
-        if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
-
-        if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
-
-        if (tags) {
-
-            const newTags = Array.isArray(tags) ? tags : [tags];
-            existingUrl.tags = newTags;
-        }
-
-        if (typeof isProtected !== "undefined") {
-            existingUrl.protected = isProtected;
-
-            if (isProtected) {
-
-                existingUrl.password = password && password.trim() !== "" ? password : uuid().slice(0, 10);
-            } else {
-
-                existingUrl.password = null;
-            }
-        }
-
-        await existingUrl.save();
-
-        return res.status(200).json({
-            message: "Short URL updated successfully",
-            data: existingUrl,
-        });
-    } catch (error) {
-        console.error("Error updating short URL:", error);
-        return res.status(500).json({
-            message: "Internal server error",
-        });
+  try {
+    const existingUrl = await ShortUrl.findById(id);
+    if (!existingUrl) {
+      return res.status(404).json({ message: "Short URL not found" });
     }
+
+    if (existingUrl.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to update this link" });
+    }
+
+   
+    if (slugName && slugName !== existingUrl.slugName) {
+      const normalizedSlug = slugName.trim().toLowerCase();
+      const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
+      if (slugConflict) {
+        return res.status(409).json({ message: "Slug name already exists" });
+      }
+      existingUrl.slugName = normalizedSlug;
+    }
+
+ 
+    if (domain && domain !== existingUrl.domain) {
+      existingUrl.domain = domain;
+    }
+
+    
+    existingUrl.shortUrl = `https://${existingUrl.domain}/${existingUrl.slugName}`;
+
+   
+    if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
+    if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
+
+    if (tags) {
+      const newTags = Array.isArray(tags) ? tags : [tags];
+      existingUrl.tags = newTags;
+    }
+
+    if (typeof isProtected !== "undefined") {
+      existingUrl.protected = isProtected;
+      if (isProtected) {
+        existingUrl.password =
+          password && password.trim() !== "" ? password : uuid().slice(0, 10);
+      } else {
+        existingUrl.password = null;
+      }
+    }
+
+    await existingUrl.save();
+
+    return res.status(200).json({
+      message: "Short URL updated successfully",
+      data: existingUrl,
+    });
+  } catch (error) {
+    console.error("Error updating short URL:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
 };
+
 
 
 // export const redirectUrl = async (req, res) => {
