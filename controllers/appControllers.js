@@ -730,13 +730,6 @@ export const filterShortUrls = async (req, res) => {
 
     try {
         const data = await ShortUrl.find(filter);
-
-        if (data.length === 0) {
-            return res.status(404).json({
-                message: `No ${sort} URLs found`
-            });
-        }
-
         return res.status(200).json({
             results: data
         });
