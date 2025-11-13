@@ -70,27 +70,29 @@ export const googleLogin = async (req, res) => {
 
         const { email, name, sub: googleId } = ticket.getPayload();
 
-       
         let user = await User.findOne({ email });
 
         if (!user) {
-           
+             
+            const randomPassword = Math.random().toString(36).slice(-8);
+            const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
             user = await User.create({
                 username: name,
                 email,
                 googleId,
-                password: null 
+                password: hashedPassword // now satisfies schema
             });
         }
 
-        
+        // Generate JWT
         const token = jwt.sign(
             { userId: user._id, email: user.email },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRE }
         );
 
-       
+        // Set cookie
         res.cookie("token", token, {
             httpOnly: true,
             secure: true,
@@ -103,5 +105,6 @@ export const googleLogin = async (req, res) => {
         return res.status(401).json({ message: "Google authentication failed" });
     }
 };
+
 
 
