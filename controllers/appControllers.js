@@ -774,3 +774,18 @@ export const filterShortUrls = async (req, res) => {
     }
 };
 
+
+export const totalShortUrlByUser = async(req,res)=>{
+    const userId = req.user.userId;
+    try {
+        const count = await ShortUrl.countDocuments({userId:userId});
+        return res.status(200).json({
+            count
+        })
+    } catch (error) {
+        res.status(500).json({
+            message:error.message
+        })
+    }
+}
+
