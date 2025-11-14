@@ -679,6 +679,40 @@ export const addDomain = async (req, res) => {
     }
 };
 
+export const deleteDomain = async(req,res)=>{
+    const userId = req.user.userId;
+    const {domainName} = req.params;
+
+    if(!domainName){
+        return res.status(400).json({
+            message:"please enter the domain"
+        })
+    }
+
+    try {
+        const userData = await User.findOne({_id:userId});
+        if(!userData){
+            return res.status(404).json({
+                message:"user not found"
+            });
+        }
+        const existingDomain = userData.customDomain;
+        const afterDeletionDomainList = existingDomain.filter((domain)=>domain.name !== domainName);
+
+        const updatedUserData = await User.updateOne({_id:userId},{$set:{customDomain:afterDeletionDomainList}});
+        return res.status(200).json({
+            results:updatedUserData.customDomain,
+            message:`Domain ${domainName} deleted successfully`
+        })
+
+
+    } catch (error) {
+        return res.status(500).json({
+            message:error.message
+        })
+    }
+}
+
 export const getUserDomains = async (req, res) => {
     const userId = req.user.userId;
 
