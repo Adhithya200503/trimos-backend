@@ -701,7 +701,7 @@ export const deleteDomain = async(req,res)=>{
 
         const updatedUserData = await User.updateOne({_id:userId},{$set:{customDomain:afterDeletionDomainList}});
         return res.status(200).json({
-            results:updatedUserData.customDomain,
+            results:afterDeletionDomainList,
             message:`Domain ${domainName} deleted successfully`
         })
 
