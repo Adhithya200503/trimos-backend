@@ -288,28 +288,46 @@ export const redirectUrl = async (req, res) => {
       return res.status(400).json({ message: "Slug name missing" });
     }
 
-    // Get domain that user is requesting from
+    // Detect requesting domain
     const hostDomain = (req.headers.host || "").toLowerCase();
 
-    // Look for the link that belongs to this domain OR default domain
+    console.log("Incoming request domain:", hostDomain);
+
+    // ---- STEP 1: Check if this domain is a CUSTOM DOMAIN ----
+    const customDomainOwner = await User.findOne({
+      "customDomain.name": hostDomain,
+    });
+
+    let validDomainList = [];
+
+    if (customDomainOwner) {
+      // This request is coming through a custom domain
+      console.log("Custom domain detected:", hostDomain);
+
+      validDomainList = [hostDomain, `www.${hostDomain}`];
+    } else {
+      // This is your default domain
+      validDomainList = [
+        hostDomain,
+        `www.${hostDomain}`,
+        "trim-url-gpxt.onrender.com", // default
+        "www.trimurl.site",
+        "trimurl.site",
+      ];
+    }
+
+    // ---- STEP 2: Find the short URL that matches slug + domain ----
     const urlData = await ShortUrl.findOne({
       slugName,
-      domain: { 
-        $in: [
-          hostDomain,
-          `www.${hostDomain}`,
-          "", 
-          null, 
-          "trim-url-gpxt.onrender.com" // your default domain
-        ]
-      }
+      domain: { $in: validDomainList },
     });
 
     if (!urlData) {
+      console.log("No match found for domain + slug:", slugName, validDomainList);
       return res.status(404).json({ message: "Short URL not found" });
     }
 
-    // If link is protected
+    // ---- STEP 3: Handle protected links ----
     if (urlData.protected) {
       return res.redirect(
         302,
@@ -317,7 +335,7 @@ export const redirectUrl = async (req, res) => {
       );
     }
 
-    // If inactive → redirect to inactive page
+    // ---- STEP 4: Inactive link check ----
     if (!urlData.isActive) {
       const redirectBase =
         process.env.MODE === "dev"
@@ -327,13 +345,13 @@ export const redirectUrl = async (req, res) => {
       return res.redirect(302, `${redirectBase}/in-active`);
     }
 
-    // Increase clicks immediately
+    // ---- STEP 5: Click Count ----
     await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
 
-    // Redirect user to actual destination
+    // ---- STEP 6: Redirect to final destination ----
     res.redirect(302, urlData.destinationUrl);
 
-    // Fire analytics in background (non-blocking)
+    // ---- STEP 7: Run analytics in background ----
     (async () => {
       try {
         const ip =
@@ -358,9 +376,9 @@ export const redirectUrl = async (req, res) => {
             [`stats.${country}.cities.${city}`]: 1,
             [`deviceStats.${device}`]: 1,
             [`browserStats.${browser}`]: 1,
-            [`osStats.${os}`]: 1
+            [`osStats.${os}`]: 1,
           },
-          $set: { lastClickedAt: new Date().toISOString() }
+          $set: { lastClickedAt: new Date().toISOString() },
         };
 
         await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
@@ -373,6 +391,7 @@ export const redirectUrl = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 
 export const searchUrl = async (req, res) => {
@@ -711,65 +730,66 @@ export const addDomain = async (req, res) => {
             user.customDomain = [];
         }
 
-        // Prevent duplicates
-        if (user.customDomain.find((d) => d.name === domainName)) {
-            return res.status(400).json({ message: "Domain already exists." });
-        }
-
-        // ✅ Step 1: Resolve the domain’s CNAME
-        console.log(`🔍 Verifying CNAME for: ${domainName}`);
-        let cnameRecords;
-        try {
-            cnameRecords = await resolveCname(domainName);
-            console.log("✅ Found CNAME records:", cnameRecords);
-        } catch (err) {
-            console.error("❌ CNAME lookup failed:", err.message);
+        // block duplicate domains
+        if (user.customDomain.find(d => d.name === domainName)) {
             return res.status(400).json({
-                success: false,
-                message:
-                    "Unable to resolve CNAME record. Please check your DNS settings and try again.",
-                details: err.message,
+                message: "Domain already exists."
             });
         }
 
-        // ✅ Step 2: Check CNAME target
+        // --- STEP 1: DNS CHECK ---
+        console.log("🔍 Checking CNAME for:", domainName);
+
+        let cnameRecords = [];
+        try {
+            cnameRecords = await dns.resolveCname(domainName);
+        } catch (err) {
+            return res.status(400).json({
+                success: false,
+                message: "Unable to resolve CNAME. Please check DNS settings.",
+                details: err.message
+            });
+        }
+
+        console.log("Found CNAME:", cnameRecords);
+
+        // --- STEP 2: Compare with expected ---
         const expectedTarget = "trim-url-gpxt.onrender.com";
 
-        const isValid = cnameRecords.some(
-            (record) => record === expectedTarget || record.endsWith(expectedTarget)
+        const valid = cnameRecords.some(
+            (c) => c === expectedTarget || c.endsWith(expectedTarget)
         );
 
-        if (!isValid) {
-            console.warn("⚠️ Invalid CNAME target found:", cnameRecords);
+        if (!valid) {
             return res.status(400).json({
                 success: false,
-                message: `CNAME record must point to '${expectedTarget}'.`,
-                foundRecords: cnameRecords,
+                message: `Your domain must CNAME → ${expectedTarget}`,
+                found: cnameRecords
             });
         }
 
-        // ✅ Step 3: Save verified domain
+        // --- STEP 3: SAVE DOMAIN ---
         user.customDomain.push({
             name: domainName,
             verified: true,
             cnameTarget: expectedTarget,
-            addedAt: new Date(),
+            addedAt: new Date()
         });
 
         await user.save();
 
-        console.log(`✅ Domain verified & saved: ${domainName}`);
-
         return res.status(200).json({
             success: true,
-            message: "Domain verified and added successfully!",
-            domains: user.customDomain,
+            message: "Domain added and verified successfully!",
+            domains: user.customDomain
         });
+
     } catch (error) {
-        console.error("❌ Unexpected error in addDomain:", error);
+        console.error(error);
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: "Server error",
+            error: error.message
         });
     }
 };

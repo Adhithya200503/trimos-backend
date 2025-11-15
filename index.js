@@ -7,6 +7,7 @@ import authenticator from "./middleware/authMiddleware.js";
 import appRoutes from "./routes/appRoutes.js";
 import cors from "cors"
 import { redirectProtectPages, redirectUrl } from "./controllers/appControllers.js";
+import User from "./model/User.js";
 dotenv.config();
 connectDB();
 
@@ -30,6 +31,26 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use(async (req, res, next) => {
+    const host = req.headers.host; // e.g., johnslink.com
+
+    const user = await User.findOne({ "customDomain.name": host });
+
+    if (user) {
+        // Mark as verified if needed
+        const domain = user.customDomain.find(d => d.name === host);
+        if (!domain.verified) {
+            domain.verified = true;
+            await user.save();
+        }
+
+        // Serve the user's link page
+        return handleUserLinkPage(user, req, res);
+    }
+
+    next();
+});
+
 app.use("/auth", authRoutes);
 
 app.post("/protected-url", redirectProtectPages)
