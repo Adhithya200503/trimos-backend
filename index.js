@@ -17,7 +17,8 @@ app.use(express.json());
 const allowedOrigins = [
   "http://localhost:5173",
   "https://url-shortner-mkoi.onrender.com",
-  "https://www.trimurl.site"
+  "https://www.trimurl.site",
+  "https://trimurl.site"
 ];
 
 
