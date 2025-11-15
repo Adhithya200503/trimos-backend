@@ -773,7 +773,7 @@ export const addDomain = async (req, res) => {
         user.customDomain.push({
             name: domainName,
             verified: true,
-            cnameTarget: "app.trimurl.site",
+            cnameTarget: "api.trimurl.site",
             addedAt: new Date()
         });
 
