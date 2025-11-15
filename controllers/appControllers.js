@@ -722,75 +722,62 @@ export const addDomain = async (req, res) => {
 
     try {
         const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: "User not found." });
+        if (!user) return res.status(404).json({ message: "User not found." });
+
+        if (!Array.isArray(user.customDomain)) user.customDomain = [];
+
+        // Prevent duplicates
+        if (user.customDomain.find((d) => d.name === domainName)) {
+            return res.status(400).json({ message: "Domain already exists." });
         }
 
-        if (!Array.isArray(user.customDomain)) {
-            user.customDomain = [];
-        }
+        console.log(`🔍 Checking DNS for: ${domainName}`);
 
-        // block duplicate domains
-        if (user.customDomain.find(d => d.name === domainName)) {
-            return res.status(400).json({
-                message: "Domain already exists."
-            });
-        }
+        let dnsValid = false;
 
-        // --- STEP 1: DNS CHECK ---
-        console.log("🔍 Checking CNAME for:", domainName);
-
-        let cnameRecords = [];
+        // Try A record
         try {
-            cnameRecords = await dns.resolveCname(domainName);
-        } catch (err) {
+            await dns.resolve(domainName, "A");
+            dnsValid = true;
+        } catch {}
+
+        // Try AAAA
+        try {
+            await dns.resolve(domainName, "AAAA");
+            dnsValid = true;
+        } catch {}
+
+        // Try CNAME (might fail on Cloudflare)
+        try {
+            await dns.resolve(domainName, "CNAME");
+            dnsValid = true;
+        } catch {}
+
+        if (!dnsValid) {
             return res.status(400).json({
                 success: false,
-                message: "Unable to resolve CNAME. Please check DNS settings.",
-                details: err.message
+                message: "Cloudflare not resolving the domain yet. Try again in 3–10 minutes.",
             });
         }
 
-        console.log("Found CNAME:", cnameRecords);
-
-        // --- STEP 2: Compare with expected ---
-        const expectedTarget = "trim-url-gpxt.onrender.com";
-
-        const valid = cnameRecords.some(
-            (c) => c === expectedTarget || c.endsWith(expectedTarget)
-        );
-
-        if (!valid) {
-            return res.status(400).json({
-                success: false,
-                message: `Your domain must CNAME → ${expectedTarget}`,
-                found: cnameRecords
-            });
-        }
-
-        // --- STEP 3: SAVE DOMAIN ---
+        // Save domain
         user.customDomain.push({
             name: domainName,
             verified: true,
-            cnameTarget: expectedTarget,
-            addedAt: new Date()
+            addedAt: new Date(),
         });
 
         await user.save();
 
         return res.status(200).json({
             success: true,
-            message: "Domain added and verified successfully!",
-            domains: user.customDomain
+            message: "Domain verified successfully!",
+            domains: user.customDomain,
         });
 
     } catch (error) {
         console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: "Server error",
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
