@@ -202,83 +202,178 @@ export const updateShortUrl = async (req, res) => {
 // };
 
 
-export const redirectUrl = async (req, res) => {
-    try {
-        const { slugName } = req.params;
-        if (!slugName) {
-            return res.status(400).json({ message: "Slug name missing" });
-        }
+// export const redirectUrl = async (req, res) => {
+//     try {
+//         const { slugName } = req.params;
+//         if (!slugName) {
+//             return res.status(400).json({ message: "Slug name missing" });
+//         }
         
-        const hostDomain = req.headers.host || "trim-url-gpxt.onrender.com";
+//         const hostDomain = req.headers.host || "trim-url-gpxt.onrender.com";
 
-        const urlData = await ShortUrl.findOne({
-            slugName,
-            $or: [
-                { domain: hostDomain },
-                { domain: "trim-url-gpxt.onrender.com" },
-                { domain: { $exists: false } },
-                { domain: "" },
-            ],
-        });
+//         const urlData = await ShortUrl.findOne({
+//             slugName,
+//             $or: [
+//                 { domain: hostDomain },
+//                 { domain: "trim-url-gpxt.onrender.com" },
+//                 { domain: { $exists: false } },
+//                 { domain: "" },
+//             ],
+//         });
 
-        if (!urlData) {
-            return res.status(404).json({ message: "Short URL not found" });
-        }
-        if(urlData.protected){
-            return res.redirect(302,`https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`);
-        }
-        if (!urlData.isActive) {
-            const redirectBase =
-                process.env.MODE === "dev"
-                    ? "http://localhost:5173"
-                    : process.env.FRONTEND_END_URL;
-            return res.redirect(302, `${redirectBase}/in-active`);
-        }
-
-
-        await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
-
-        res.redirect(302, urlData.destinationUrl);
+//         if (!urlData) {
+//             return res.status(404).json({ message: "Short URL not found" });
+//         }
+//         if(urlData.protected){
+//             return res.redirect(302,`https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`);
+//         }
+//         if (!urlData.isActive) {
+//             const redirectBase =
+//                 process.env.MODE === "dev"
+//                     ? "http://localhost:5173"
+//                     : process.env.FRONTEND_END_URL;
+//             return res.redirect(302, `${redirectBase}/in-active`);
+//         }
 
 
-        (async () => {
-            try {
-                const ip =
-                    req.headers["x-forwarded-for"]?.split(",")[0] ||
-                    req.socket.remoteAddress ||
-                    "";
-                const geoRes = await fetch(`https://ipwho.is/${ip}`);
-                const geoData = await geoRes.json();
+//         await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
 
-                const country = geoData?.country || "Unknown";
-                const city = geoData?.city || "Unknown";
+//         res.redirect(302, urlData.destinationUrl);
 
-                const parser = new UAParser(req.headers["user-agent"]);
-                const browser = parser.getBrowser().name || "Unknown";
-                const device = parser.getDevice().type || "Unknown";
-                const os = parser.getOS().name || "Unknown";
 
-                const analyticsUpdate = {
-                    $inc: {
-                        [`stats.${country}.count`]: 1,
-                        [`stats.${country}.cities.${city}`]: 1,
-                        [`deviceStats.${device}`]: 1,
-                        [`browserStats.${browser}`]: 1,
-                        [`osStats.${os}`]: 1,
-                    },
-                    $set: { lastClickedAt: new Date().toISOString() },
-                };
+//         (async () => {
+//             try {
+//                 const ip =
+//                     req.headers["x-forwarded-for"]?.split(",")[0] ||
+//                     req.socket.remoteAddress ||
+//                     "";
+//                 const geoRes = await fetch(`https://ipwho.is/${ip}`);
+//                 const geoData = await geoRes.json();
 
-                await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
-            } catch (err) {
-                console.error(`[Analytics Error: ${slugName}]`, err);
-            }
-        })();
-    } catch (err) {
-        console.error("Redirect Error:", err);
-        res.status(500).json({ message: "Internal Server Error" });
+//                 const country = geoData?.country || "Unknown";
+//                 const city = geoData?.city || "Unknown";
+
+//                 const parser = new UAParser(req.headers["user-agent"]);
+//                 const browser = parser.getBrowser().name || "Unknown";
+//                 const device = parser.getDevice().type || "Unknown";
+//                 const os = parser.getOS().name || "Unknown";
+
+//                 const analyticsUpdate = {
+//                     $inc: {
+//                         [`stats.${country}.count`]: 1,
+//                         [`stats.${country}.cities.${city}`]: 1,
+//                         [`deviceStats.${device}`]: 1,
+//                         [`browserStats.${browser}`]: 1,
+//                         [`osStats.${os}`]: 1,
+//                     },
+//                     $set: { lastClickedAt: new Date().toISOString() },
+//                 };
+
+//                 await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
+//             } catch (err) {
+//                 console.error(`[Analytics Error: ${slugName}]`, err);
+//             }
+//         })();
+//     } catch (err) {
+//         console.error("Redirect Error:", err);
+//         res.status(500).json({ message: "Internal Server Error" });
+//     }
+// };
+
+export const redirectUrl = async (req, res) => {
+  try {
+    const { slugName } = req.params;
+
+    if (!slugName) {
+      return res.status(400).json({ message: "Slug name missing" });
     }
+
+    // Get domain that user is requesting from
+    const hostDomain = (req.headers.host || "").toLowerCase();
+
+    // Look for the link that belongs to this domain OR default domain
+    const urlData = await ShortUrl.findOne({
+      slugName,
+      domain: { 
+        $in: [
+          hostDomain,
+          `www.${hostDomain}`,
+          "", 
+          null, 
+          "trim-url-gpxt.onrender.com" // your default domain
+        ]
+      }
+    });
+
+    if (!urlData) {
+      return res.status(404).json({ message: "Short URL not found" });
+    }
+
+    // If link is protected
+    if (urlData.protected) {
+      return res.redirect(
+        302,
+        `https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`
+      );
+    }
+
+    // If inactive → redirect to inactive page
+    if (!urlData.isActive) {
+      const redirectBase =
+        process.env.MODE === "dev"
+          ? "http://localhost:5173"
+          : process.env.FRONTEND_END_URL;
+
+      return res.redirect(302, `${redirectBase}/in-active`);
+    }
+
+    // Increase clicks immediately
+    await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
+
+    // Redirect user to actual destination
+    res.redirect(302, urlData.destinationUrl);
+
+    // Fire analytics in background (non-blocking)
+    (async () => {
+      try {
+        const ip =
+          req.headers["x-forwarded-for"]?.split(",")[0] ||
+          req.socket.remoteAddress ||
+          "";
+
+        const geoRes = await fetch(`https://ipwho.is/${ip}`);
+        const geoData = await geoRes.json();
+
+        const country = geoData?.country || "Unknown";
+        const city = geoData?.city || "Unknown";
+
+        const parser = new UAParser(req.headers["user-agent"]);
+        const browser = parser.getBrowser().name || "Unknown";
+        const device = parser.getDevice().type || "Unknown";
+        const os = parser.getOS().name || "Unknown";
+
+        const analyticsUpdate = {
+          $inc: {
+            [`stats.${country}.count`]: 1,
+            [`stats.${country}.cities.${city}`]: 1,
+            [`deviceStats.${device}`]: 1,
+            [`browserStats.${browser}`]: 1,
+            [`osStats.${os}`]: 1
+          },
+          $set: { lastClickedAt: new Date().toISOString() }
+        };
+
+        await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
+      } catch (err) {
+        console.error(`[Analytics Error: ${slugName}]`, err);
+      }
+    })();
+  } catch (err) {
+    console.error("Redirect Error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 };
+
 
 export const searchUrl = async (req, res) => {
     try {
