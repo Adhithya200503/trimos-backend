@@ -711,7 +711,6 @@ export const deleteQrCode = async (req, res) => {
 
 
 
-
 export const addDomain = async (req, res) => {
     const userId = req.user.userId;
     const { domainName } = req.body;
@@ -722,62 +721,73 @@ export const addDomain = async (req, res) => {
 
     try {
         const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "User not found." });
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
 
-        if (!Array.isArray(user.customDomain)) user.customDomain = [];
+        if (!Array.isArray(user.customDomain)) {
+            user.customDomain = [];
+        }
 
         // Prevent duplicates
-        if (user.customDomain.find((d) => d.name === domainName)) {
+        if (user.customDomain.find(d => d.name === domainName)) {
             return res.status(400).json({ message: "Domain already exists." });
         }
 
         console.log(`🔍 Checking DNS for: ${domainName}`);
 
-        let dnsValid = false;
-
-        // Try A record
+        // STEP 1: Resolve A-record (Cloudflare returns IP)
+        let records;
         try {
-            await dns.resolve(domainName, "A");
-            dnsValid = true;
-        } catch {}
-
-        // Try AAAA
-        try {
-            await dns.resolve(domainName, "AAAA");
-            dnsValid = true;
-        } catch {}
-
-        // Try CNAME (might fail on Cloudflare)
-        try {
-            await dns.resolve(domainName, "CNAME");
-            dnsValid = true;
-        } catch {}
-
-        if (!dnsValid) {
+            records = await dns.resolve(domainName);
+        } catch (err) {
             return res.status(400).json({
                 success: false,
-                message: "Cloudflare not resolving the domain yet. Try again in 3–10 minutes.",
+                message: "Unable to resolve domain. Check DNS settings.",
+                details: err.message
             });
         }
 
-        // Save domain
+        console.log("Resolved IPs:", records);
+
+        // STEP 2: Check if domain is pointing to Cloudflare
+        const isCloudflare =
+            records.some(
+                ip =>
+                    ip.startsWith("104.") ||
+                    ip.startsWith("172.") ||
+                    ip.startsWith("162.") ||
+                    ip.startsWith("198.") ||
+                    ip.startsWith("188.")
+            );
+
+        if (!isCloudflare) {
+            return res.status(400).json({
+                success: false,
+                message: "Domain DNS is not proxied through Cloudflare. Enable orange-cloud proxy.",
+                foundRecords: records
+            });
+        }
+
+        // SAVE DOMAIN
         user.customDomain.push({
             name: domainName,
             verified: true,
-            addedAt: new Date(),
+            cnameTarget: "app.trimurl.site",
+            addedAt: new Date()
         });
 
         await user.save();
 
         return res.status(200).json({
             success: true,
-            message: "Domain verified successfully!",
-            domains: user.customDomain,
+            message: "Domain added successfully!",
+            domains: user.customDomain
         });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        console.error("Error in addDomain:", error);
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
