@@ -710,7 +710,6 @@ export const deleteQrCode = async (req, res) => {
 };
 
 
-
 export const addDomain = async (req, res) => {
     const userId = req.user.userId;
     const { domainName } = req.body;
@@ -729,50 +728,14 @@ export const addDomain = async (req, res) => {
             user.customDomain = [];
         }
 
-        // Prevent duplicates
+      
         if (user.customDomain.find(d => d.name === domainName)) {
             return res.status(400).json({ message: "Domain already exists." });
         }
 
-        console.log(`🔍 Checking DNS for: ${domainName}`);
-
-        // STEP 1: Resolve A-record (Cloudflare returns IP)
-        let records;
-        try {
-            records = await dns.resolve(domainName);
-        } catch (err) {
-            return res.status(400).json({
-                success: false,
-                message: "Unable to resolve domain. Check DNS settings.",
-                details: err.message
-            });
-        }
-
-        console.log("Resolved IPs:", records);
-
-        // STEP 2: Check if domain is pointing to Cloudflare
-        const isCloudflare =
-            records.some(
-                ip =>
-                    ip.startsWith("104.") ||
-                    ip.startsWith("172.") ||
-                    ip.startsWith("162.") ||
-                    ip.startsWith("198.") ||
-                    ip.startsWith("188.")
-            );
-
-        if (!isCloudflare) {
-            return res.status(400).json({
-                success: false,
-                message: "Domain DNS is not proxied through Cloudflare. Enable orange-cloud proxy.",
-                foundRecords: records
-            });
-        }
-
-        // SAVE DOMAIN
+        
         user.customDomain.push({
             name: domainName,
-            verified: true,
             cnameTarget: "app.trimurl.site",
             addedAt: new Date()
         });
@@ -790,6 +753,7 @@ export const addDomain = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
 
 export const deleteDomain = async(req,res)=>{
     const userId = req.user.userId;
