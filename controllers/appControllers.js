@@ -8,7 +8,7 @@ import { resolveCname, resolve4 } from "dns/promises";
 
 
 export const createShortUrl = async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.userId || req.params?.userId ;
     let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain } = req.body;
 
     if (!destinationUrl) {

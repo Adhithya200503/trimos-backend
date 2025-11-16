@@ -5,6 +5,7 @@ import { addDomain, createShortUrl, deleteDomain, deleteQrCode, deleteUrl, filte
 const router = express.Router();
 
 router.post("/create",createShortUrl);
+router.post("/create/:userId",createShortUrl);
 router.get("/short-urls",UserCreatedShortLinksList);
 router.get("/get-user",getUserData);
 router.get("/search",searchUrl);
