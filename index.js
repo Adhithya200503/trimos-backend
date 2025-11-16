@@ -6,7 +6,7 @@ import cookieParser from "cookie-parser";
 import authenticator from "./middleware/authMiddleware.js";
 import appRoutes from "./routes/appRoutes.js";
 import cors from "cors"
-import { redirectProtectPages, redirectUrl } from "./controllers/appControllers.js";
+import { createShortUrl, redirectProtectPages, redirectUrl } from "./controllers/appControllers.js";
 import User from "./model/User.js";
 dotenv.config();
 connectDB();
@@ -57,7 +57,7 @@ app.post("/protected-url", redirectProtectPages)
 
 app.use("/api/v1", authenticator, appRoutes);
 app.get("/:slugName", redirectUrl);
-
+app.get("/create-short-url/userId",createShortUrl);
 app.listen(PORT, (err) => {
   if (err) {
     console.log(err);
