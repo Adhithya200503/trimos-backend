@@ -753,7 +753,7 @@ export const createToken = async (req, res) => {
             return res.status(400).json({ message: "Token name already exists" });
         }
 
-        const tokenId = uuid().slice(0, 6);
+        const tokenId = uuid();
         const tokenData = { tokenName, tokenId };
 
      
