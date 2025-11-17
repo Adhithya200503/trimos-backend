@@ -23,7 +23,7 @@ router.get("/domains", getUserDomains);
 router.get("/filter/:sort",filterShortUrls);
 router.get("/total-short-urls",totalShortUrlByUser);
 router.post("/create-token",createToken);
-router.delete("/create-token",deleteToken);
+router.delete("/delete-token",deleteToken);
 router.get("/tokens",getTokens);
 router.post("/auth/logout", (req, res) => {
   res.clearCookie("token").json({ message: "Logged out" });
