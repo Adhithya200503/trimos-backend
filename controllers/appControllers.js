@@ -8,7 +8,7 @@ import { resolveCname, resolve4 } from "dns/promises";
 
 
 export const createShortUrl = async (req, res) => {
-    const userId = req.user.userId || req.params?.userId ;
+    const userId = req.user.userId || req.params?.userId;
     let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain } = req.body;
 
     if (!destinationUrl) {
@@ -72,324 +72,191 @@ export const createShortUrl = async (req, res) => {
 
 
 export const updateShortUrl = async (req, res) => {
-  const userId = req.user.userId;
-  const { id } = req.params;
-  const {
-    destinationUrl,
-    slugName,
-    tags,
-    protected: isProtected,
-    password,
-    isActive,
-    domain,
-  } = req.body;
+    const userId = req.user.userId;
+    const { id } = req.params;
+    const {
+        destinationUrl,
+        slugName,
+        tags,
+        protected: isProtected,
+        password,
+        isActive,
+        domain,
+    } = req.body;
 
-  try {
-    const existingUrl = await ShortUrl.findById(id);
-    if (!existingUrl) {
-      return res.status(404).json({ message: "Short URL not found" });
+    try {
+        const existingUrl = await ShortUrl.findById(id);
+        if (!existingUrl) {
+            return res.status(404).json({ message: "Short URL not found" });
+        }
+
+        if (existingUrl.userId.toString() !== userId) {
+            return res.status(403).json({ message: "Not authorized to update this link" });
+        }
+
+
+        if (slugName && slugName !== existingUrl.slugName) {
+            const normalizedSlug = slugName.trim().toLowerCase();
+            const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
+            if (slugConflict) {
+                return res.status(409).json({ message: "Slug name already exists" });
+            }
+            existingUrl.slugName = normalizedSlug;
+        }
+
+
+        if (domain && domain !== existingUrl.domain) {
+            existingUrl.domain = domain;
+        }
+
+
+        existingUrl.shortUrl = `https://${existingUrl.domain}/${existingUrl.slugName}`;
+
+
+        if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
+        if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
+
+        if (tags) {
+            const newTags = Array.isArray(tags) ? tags : [tags];
+            existingUrl.tags = newTags;
+        }
+
+        if (typeof isProtected !== "undefined") {
+            existingUrl.protected = isProtected;
+            if (isProtected) {
+                existingUrl.password =
+                    password && password.trim() !== "" ? password : uuid().slice(0, 10);
+            } else {
+                existingUrl.password = null;
+            }
+        }
+
+        await existingUrl.save();
+
+        return res.status(200).json({
+            message: "Short URL updated successfully",
+            data: existingUrl,
+        });
+    } catch (error) {
+        console.error("Error updating short URL:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+        });
     }
-
-    if (existingUrl.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Not authorized to update this link" });
-    }
-
-   
-    if (slugName && slugName !== existingUrl.slugName) {
-      const normalizedSlug = slugName.trim().toLowerCase();
-      const slugConflict = await ShortUrl.findOne({ slugName: normalizedSlug });
-      if (slugConflict) {
-        return res.status(409).json({ message: "Slug name already exists" });
-      }
-      existingUrl.slugName = normalizedSlug;
-    }
-
- 
-    if (domain && domain !== existingUrl.domain) {
-      existingUrl.domain = domain;
-    }
-
-    
-    existingUrl.shortUrl = `https://${existingUrl.domain}/${existingUrl.slugName}`;
-
-   
-    if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
-    if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
-
-    if (tags) {
-      const newTags = Array.isArray(tags) ? tags : [tags];
-      existingUrl.tags = newTags;
-    }
-
-    if (typeof isProtected !== "undefined") {
-      existingUrl.protected = isProtected;
-      if (isProtected) {
-        existingUrl.password =
-          password && password.trim() !== "" ? password : uuid().slice(0, 10);
-      } else {
-        existingUrl.password = null;
-      }
-    }
-
-    await existingUrl.save();
-
-    return res.status(200).json({
-      message: "Short URL updated successfully",
-      data: existingUrl,
-    });
-  } catch (error) {
-    console.error("Error updating short URL:", error);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
 };
 
 
 
-// export const redirectUrl = async (req, res) => {
-//   const { slugName } = req.params;
-//   if (!slugName) return res.status(400).json({ message: "Slug missing" });
-
-//   const urlData = await ShortUrl.findOne({ slugName });
-//   if (!urlData) return res.status(404).json({ message: "Not found" });
-
-//   if (!urlData.isActive)
-//     return res.redirect(
-//       302,
-//       `${process.env.MODE === "dev"
-//         ? "http://localhost:5173"
-//         : process.env.FRONTEND_END_URL}/in-active`
-//     );
-
-//   // Immediately increment clicks
-//   await ShortUrl.updateOne({ slugName }, { $inc: { clicks: 1 } });
-
-//   // Then redirect
-//   res.redirect(302, urlData.destinationUrl);
-
-//   // Optional: fire detailed analytics (fire-and-forget)
-//   (async () => {
-//     try {
-//       const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "";
-//       const geoRes = await fetch(`https://ipwho.is/${ip}`);
-//       const geoData = await geoRes.json();
-
-//       const country = geoData?.country || "Unknown";
-//       const city = geoData?.city || "Unknown";
-
-//       const parser = new UAParser(req.headers["user-agent"]);
-//       const browser = parser.getBrowser().name || "Unknown";
-//       const device = parser.getDevice().type || "Unknown";
-//       const os = parser.getOS().name || "Unknown";
-
-//       const analyticsUpdate = {
-//         $inc: {
-//           [`stats.${country}.count`]: 1,
-//           [`stats.${country}.cities.${city}`]: 1,
-//           [`deviceStats.${device}`]: 1,
-//           [`browserStats.${browser}`]: 1,
-//           [`osStats.${os}`]: 1,
-//         },
-//         $set: { lastClickedAt: new Date().toISOString() },
-//       };
-
-//       await ShortUrl.updateOne({ slugName }, analyticsUpdate);
-//     } catch (err) {
-//       console.error(`[Analytics Error: ${slugName}]`, err);
-//     }
-//   })();
-// };
-
-
-// export const redirectUrl = async (req, res) => {
-//     try {
-//         const { slugName } = req.params;
-//         if (!slugName) {
-//             return res.status(400).json({ message: "Slug name missing" });
-//         }
-        
-//         const hostDomain = req.headers.host || "trim-url-gpxt.onrender.com";
-
-//         const urlData = await ShortUrl.findOne({
-//             slugName,
-//             $or: [
-//                 { domain: hostDomain },
-//                 { domain: "trim-url-gpxt.onrender.com" },
-//                 { domain: { $exists: false } },
-//                 { domain: "" },
-//             ],
-//         });
-
-//         if (!urlData) {
-//             return res.status(404).json({ message: "Short URL not found" });
-//         }
-//         if(urlData.protected){
-//             return res.redirect(302,`https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`);
-//         }
-//         if (!urlData.isActive) {
-//             const redirectBase =
-//                 process.env.MODE === "dev"
-//                     ? "http://localhost:5173"
-//                     : process.env.FRONTEND_END_URL;
-//             return res.redirect(302, `${redirectBase}/in-active`);
-//         }
-
-
-//         await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
-
-//         res.redirect(302, urlData.destinationUrl);
-
-
-//         (async () => {
-//             try {
-//                 const ip =
-//                     req.headers["x-forwarded-for"]?.split(",")[0] ||
-//                     req.socket.remoteAddress ||
-//                     "";
-//                 const geoRes = await fetch(`https://ipwho.is/${ip}`);
-//                 const geoData = await geoRes.json();
-
-//                 const country = geoData?.country || "Unknown";
-//                 const city = geoData?.city || "Unknown";
-
-//                 const parser = new UAParser(req.headers["user-agent"]);
-//                 const browser = parser.getBrowser().name || "Unknown";
-//                 const device = parser.getDevice().type || "Unknown";
-//                 const os = parser.getOS().name || "Unknown";
-
-//                 const analyticsUpdate = {
-//                     $inc: {
-//                         [`stats.${country}.count`]: 1,
-//                         [`stats.${country}.cities.${city}`]: 1,
-//                         [`deviceStats.${device}`]: 1,
-//                         [`browserStats.${browser}`]: 1,
-//                         [`osStats.${os}`]: 1,
-//                     },
-//                     $set: { lastClickedAt: new Date().toISOString() },
-//                 };
-
-//                 await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
-//             } catch (err) {
-//                 console.error(`[Analytics Error: ${slugName}]`, err);
-//             }
-//         })();
-//     } catch (err) {
-//         console.error("Redirect Error:", err);
-//         res.status(500).json({ message: "Internal Server Error" });
-//     }
-// };
-
 export const redirectUrl = async (req, res) => {
-  try {
-    const { slugName } = req.params;
+    try {
+        const { slugName } = req.params;
 
-    if (!slugName) {
-      return res.status(400).json({ message: "Slug name missing" });
+        if (!slugName) {
+            return res.status(400).json({ message: "Slug name missing" });
+        }
+
+        // Detect requesting domain
+        const hostDomain = (req.headers.host || "").toLowerCase();
+
+        console.log("Incoming request domain:", hostDomain);
+
+        // ---- STEP 1: Check if this domain is a CUSTOM DOMAIN ----
+        const customDomainOwner = await User.findOne({
+            "customDomain.name": hostDomain,
+        });
+
+        let validDomainList = [];
+
+        if (customDomainOwner) {
+            // This request is coming through a custom domain
+            console.log("Custom domain detected:", hostDomain);
+
+            validDomainList = [hostDomain, `www.${hostDomain}`];
+        } else {
+            // This is your default domain
+            validDomainList = [
+                hostDomain,
+                `www.${hostDomain}`,
+                "trim-url-gpxt.onrender.com", // default
+                "www.trimurl.site",
+                "trimurl.site",
+            ];
+        }
+
+        // ---- STEP 2: Find the short URL that matches slug + domain ----
+        const urlData = await ShortUrl.findOne({
+            slugName,
+            domain: { $in: validDomainList },
+        });
+
+        if (!urlData) {
+            console.log("No match found for domain + slug:", slugName, validDomainList);
+            return res.status(404).json({ message: "Short URL not found" });
+        }
+
+        // ---- STEP 3: Handle protected links ----
+        if (urlData.protected) {
+            return res.redirect(
+                302,
+                `https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`
+            );
+        }
+
+        // ---- STEP 4: Inactive link check ----
+        if (!urlData.isActive) {
+            const redirectBase =
+                process.env.MODE === "dev"
+                    ? "http://localhost:5173"
+                    : process.env.FRONTEND_END_URL;
+
+            return res.redirect(302, `${redirectBase}/in-active`);
+        }
+
+        // ---- STEP 5: Click Count ----
+        await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
+
+        // ---- STEP 6: Redirect to final destination ----
+        res.redirect(302, urlData.destinationUrl);
+
+        // ---- STEP 7: Run analytics in background ----
+        (async () => {
+            try {
+                const ip =
+                    req.headers["x-forwarded-for"]?.split(",")[0] ||
+                    req.socket.remoteAddress ||
+                    "";
+
+                const geoRes = await fetch(`https://ipwho.is/${ip}`);
+                const geoData = await geoRes.json();
+
+                const country = geoData?.country || "Unknown";
+                const city = geoData?.city || "Unknown";
+
+                const parser = new UAParser(req.headers["user-agent"]);
+                const browser = parser.getBrowser().name || "Unknown";
+                const device = parser.getDevice().type || "Unknown";
+                const os = parser.getOS().name || "Unknown";
+
+                const analyticsUpdate = {
+                    $inc: {
+                        [`stats.${country}.count`]: 1,
+                        [`stats.${country}.cities.${city}`]: 1,
+                        [`deviceStats.${device}`]: 1,
+                        [`browserStats.${browser}`]: 1,
+                        [`osStats.${os}`]: 1,
+                    },
+                    $set: { lastClickedAt: new Date().toISOString() },
+                };
+
+                await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
+            } catch (err) {
+                console.error(`[Analytics Error: ${slugName}]`, err);
+            }
+        })();
+    } catch (err) {
+        console.error("Redirect Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-
-    // Detect requesting domain
-    const hostDomain = (req.headers.host || "").toLowerCase();
-
-    console.log("Incoming request domain:", hostDomain);
-
-    // ---- STEP 1: Check if this domain is a CUSTOM DOMAIN ----
-    const customDomainOwner = await User.findOne({
-      "customDomain.name": hostDomain,
-    });
-
-    let validDomainList = [];
-
-    if (customDomainOwner) {
-      // This request is coming through a custom domain
-      console.log("Custom domain detected:", hostDomain);
-
-      validDomainList = [hostDomain, `www.${hostDomain}`];
-    } else {
-      // This is your default domain
-      validDomainList = [
-        hostDomain,
-        `www.${hostDomain}`,
-        "trim-url-gpxt.onrender.com", // default
-        "www.trimurl.site",
-        "trimurl.site",
-      ];
-    }
-
-    // ---- STEP 2: Find the short URL that matches slug + domain ----
-    const urlData = await ShortUrl.findOne({
-      slugName,
-      domain: { $in: validDomainList },
-    });
-
-    if (!urlData) {
-      console.log("No match found for domain + slug:", slugName, validDomainList);
-      return res.status(404).json({ message: "Short URL not found" });
-    }
-
-    // ---- STEP 3: Handle protected links ----
-    if (urlData.protected) {
-      return res.redirect(
-        302,
-        `https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`
-      );
-    }
-
-    // ---- STEP 4: Inactive link check ----
-    if (!urlData.isActive) {
-      const redirectBase =
-        process.env.MODE === "dev"
-          ? "http://localhost:5173"
-          : process.env.FRONTEND_END_URL;
-
-      return res.redirect(302, `${redirectBase}/in-active`);
-    }
-
-    // ---- STEP 5: Click Count ----
-    await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
-
-    // ---- STEP 6: Redirect to final destination ----
-    res.redirect(302, urlData.destinationUrl);
-
-    // ---- STEP 7: Run analytics in background ----
-    (async () => {
-      try {
-        const ip =
-          req.headers["x-forwarded-for"]?.split(",")[0] ||
-          req.socket.remoteAddress ||
-          "";
-
-        const geoRes = await fetch(`https://ipwho.is/${ip}`);
-        const geoData = await geoRes.json();
-
-        const country = geoData?.country || "Unknown";
-        const city = geoData?.city || "Unknown";
-
-        const parser = new UAParser(req.headers["user-agent"]);
-        const browser = parser.getBrowser().name || "Unknown";
-        const device = parser.getDevice().type || "Unknown";
-        const os = parser.getOS().name || "Unknown";
-
-        const analyticsUpdate = {
-          $inc: {
-            [`stats.${country}.count`]: 1,
-            [`stats.${country}.cities.${city}`]: 1,
-            [`deviceStats.${device}`]: 1,
-            [`browserStats.${browser}`]: 1,
-            [`osStats.${os}`]: 1,
-          },
-          $set: { lastClickedAt: new Date().toISOString() },
-        };
-
-        await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
-      } catch (err) {
-        console.error(`[Analytics Error: ${slugName}]`, err);
-      }
-    })();
-  } catch (err) {
-    console.error("Redirect Error:", err);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
 };
 
 
@@ -728,12 +595,12 @@ export const addDomain = async (req, res) => {
             user.customDomain = [];
         }
 
-      
+
         if (user.customDomain.find(d => d.name === domainName)) {
             return res.status(400).json({ message: "Domain already exists." });
         }
 
-        
+
         user.customDomain.push({
             name: domainName,
             cnameTarget: "app.trimurl.site",
@@ -755,36 +622,36 @@ export const addDomain = async (req, res) => {
 };
 
 
-export const deleteDomain = async(req,res)=>{
+export const deleteDomain = async (req, res) => {
     const userId = req.user.userId;
-    const {domainName} = req.params;
+    const { domainName } = req.params;
 
-    if(!domainName){
+    if (!domainName) {
         return res.status(400).json({
-            message:"please enter the domain"
+            message: "please enter the domain"
         })
     }
 
     try {
-        const userData = await User.findOne({_id:userId});
-        if(!userData){
+        const userData = await User.findOne({ _id: userId });
+        if (!userData) {
             return res.status(404).json({
-                message:"user not found"
+                message: "user not found"
             });
         }
         const existingDomain = userData.customDomain;
-        const afterDeletionDomainList = existingDomain.filter((domain)=>domain.name !== domainName);
+        const afterDeletionDomainList = existingDomain.filter((domain) => domain.name !== domainName);
 
-        const updatedUserData = await User.updateOne({_id:userId},{$set:{customDomain:afterDeletionDomainList}});
+        const updatedUserData = await User.updateOne({ _id: userId }, { $set: { customDomain: afterDeletionDomainList } });
         return res.status(200).json({
-            results:afterDeletionDomainList,
-            message:`Domain ${domainName} deleted successfully`
+            results: afterDeletionDomainList,
+            message: `Domain ${domainName} deleted successfully`
         })
 
 
     } catch (error) {
         return res.status(500).json({
-            message:error.message
+            message: error.message
         })
     }
 }
@@ -851,17 +718,113 @@ export const filterShortUrls = async (req, res) => {
 };
 
 
-export const totalShortUrlByUser = async(req,res)=>{
+export const totalShortUrlByUser = async (req, res) => {
     const userId = req.user.userId;
     try {
-        const count = await ShortUrl.countDocuments({userId:userId});
+        const count = await ShortUrl.countDocuments({ userId: userId });
         return res.status(200).json({
             count
         })
     } catch (error) {
         res.status(500).json({
-            message:error.message
+            message: error.message
         })
     }
 }
+
+export const createToken = async (req, res) => {
+    const userId = req.user.userId;
+    const { tokenName } = req.body;
+
+    if (!userId) {
+        return res.status(403).json({ message: "Unauthorized User (Token not Found)" });
+    }
+
+    if (!tokenName) {
+        return res.status(400).json({ message: "Token name not found" });
+    }
+
+    try {
+        
+        const user = await User.findById(userId);
+        const exists = user.token.find(t => t.tokenName === tokenName);
+
+        if (exists) {
+            return res.status(400).json({ message: "Token name already exists" });
+        }
+
+        const tokenId = uuid().slice(0, 6);
+        const tokenData = { tokenName, tokenId };
+
+     
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId },
+            { $push: { token: tokenData } },
+            { new: true }
+        );
+
+        return res.status(200).json({
+            updatedTokenList: updatedUser.token
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+
+export const deleteToken = async (req, res) => {
+    const userId = req.user.userId;
+    const { tokenName } = req.body;
+
+    if (!userId) {
+        return res.status(403).json({ message: "Unauthorized User (Token not Found)" });
+    }
+
+    if (!tokenName) {
+        return res.status(400).json({ message: "Token name not found" });
+    }
+
+    try {
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId },
+            { $pull: { token: { tokenName: tokenName } } },
+            { new: true }
+        );
+
+        return res.status(200).json({
+            updatedTokenList: updatedUser.token
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+export const getTokens = async (req, res) => {
+    const userId = req.user.userId;
+
+    if (!userId) {
+        return res.status(403).json({ message: "Unauthorized User (Token not Found)" });
+    }
+
+    try {
+        const user = await User.findById(userId).select("token");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({
+            tokens: user.token
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message
+        });
+    }
+};
+
+
 
