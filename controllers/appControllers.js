@@ -9,7 +9,7 @@ import { resolveCname, resolve4 } from "dns/promises";
 
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId || req.params?.userId;
-    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain } = req.body;
+    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain , blockedCountries } = req.body;
 
     if (!destinationUrl) {
         return res.status(400).json({ message: "Destination URL is required" });
@@ -43,6 +43,7 @@ export const createShortUrl = async (req, res) => {
             shortUrl,
             slugName,
             userId,
+            blockedCountries:blockedCountries,
             tags: Array.isArray(tags) ? tags : [],
             protected: !!isProtected,
             password: finalPassword,

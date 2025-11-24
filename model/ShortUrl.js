@@ -40,7 +40,7 @@ const shortUrlSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
-
+  blockedCountries:[String],
 
   clicks: {
     type: Number,
