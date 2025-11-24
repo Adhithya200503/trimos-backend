@@ -9,7 +9,7 @@ import { resolveCname, resolve4 } from "dns/promises";
 
 export const createShortUrl = async (req, res) => {
     const userId = req.user.userId || req.params?.userId;
-    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain , blockedCountries } = req.body;
+    let { destinationUrl, slugName, tags, protected: isProtected, password, isActive, domain, blockedCountries } = req.body;
 
     if (!destinationUrl) {
         return res.status(400).json({ message: "Destination URL is required" });
@@ -43,7 +43,7 @@ export const createShortUrl = async (req, res) => {
             shortUrl,
             slugName,
             userId,
-            blockedCountries:blockedCountries,
+            blockedCountries: blockedCountries,
             tags: Array.isArray(tags) ? tags : [],
             protected: !!isProtected,
             password: finalPassword,
@@ -148,6 +148,125 @@ export const updateShortUrl = async (req, res) => {
 
 
 
+// export const redirectUrl = async (req, res) => {
+//     try {
+//         const { slugName } = req.params;
+
+//         if (!slugName) {
+//             return res.status(400).json({ message: "Slug name missing" });
+//         }
+
+
+//         const hostDomain = (req.headers.host || "").toLowerCase();
+
+//         console.log("Incoming request domain:", hostDomain);
+
+
+//         const customDomainOwner = await User.findOne({
+//             "customDomain.name": hostDomain,
+//         });
+
+//         let validDomainList = [];
+
+//         if (customDomainOwner) {
+
+//             console.log("Custom domain detected:", hostDomain);
+
+//             validDomainList = [hostDomain, `www.${hostDomain}`];
+//         } else {
+
+//             validDomainList = [
+//                 hostDomain,
+//                 `www.${hostDomain}`,
+//                 "trim-url-gpxt.onrender.com",
+//                 "www.trimurl.site",
+//                 "trimurl.site",
+//             ];
+//         }
+
+//         const geoRes = await fetch(`https://ipwho.is/${ip}`);
+//         const geoData = await geoRes.json();
+
+//         const country = geoData?.country || "Unknown";
+
+//         if(urlData.blockedCountries.contains(country)){
+//             res.json({message:`this country (${country}) can't access this URL`})
+//         }
+//         const urlData = await ShortUrl.findOne({
+//             slugName,
+//             domain: { $in: validDomainList },
+//         });
+
+
+//         if (!urlData) {
+//             console.log("No match found for domain + slug:", slugName, validDomainList);
+//             return res.status(404).json({ message: "Short URL not found" });
+//         }
+
+
+//         if (urlData.protected) {
+//             return res.redirect(
+//                 302,
+//                 `https://url-shortner-mkoi.onrender.com/protected/${urlData.slugName}`
+//             );
+//         }
+
+
+//         if (!urlData.isActive) {
+//             const redirectBase =
+//                 process.env.MODE === "dev"
+//                     ? "http://localhost:5173"
+//                     : process.env.FRONTEND_END_URL;
+
+//             return res.redirect(302, `${redirectBase}/in-active`);
+//         }
+
+
+//         await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
+
+
+//         res.redirect(302, urlData.destinationUrl);
+
+
+//         (async () => {
+//             try {
+//                 const ip =
+//                     req.headers["x-forwarded-for"]?.split(",")[0] ||
+//                     req.socket.remoteAddress ||
+//                     "";
+
+//                 const geoRes = await fetch(`https://ipwho.is/${ip}`);
+//                 const geoData = await geoRes.json();
+
+//                 const country = geoData?.country || "Unknown";
+//                 const city = geoData?.city || "Unknown";
+
+//                 const parser = new UAParser(req.headers["user-agent"]);
+//                 const browser = parser.getBrowser().name || "Unknown";
+//                 const device = parser.getDevice().type || "Unknown";
+//                 const os = parser.getOS().name || "Unknown";
+
+//                 const analyticsUpdate = {
+//                     $inc: {
+//                         [`stats.${country}.count`]: 1,
+//                         [`stats.${country}.cities.${city}`]: 1,
+//                         [`deviceStats.${device}`]: 1,
+//                         [`browserStats.${browser}`]: 1,
+//                         [`osStats.${os}`]: 1,
+//                     },
+//                     $set: { lastClickedAt: new Date().toISOString() },
+//                 };
+
+//                 await ShortUrl.updateOne({ _id: urlData._id }, analyticsUpdate);
+//             } catch (err) {
+//                 console.error(`[Analytics Error: ${slugName}]`, err);
+//             }
+//         })();
+//     } catch (err) {
+//         console.error("Redirect Error:", err);
+//         res.status(500).json({ message: "Internal Server Error" });
+//     }
+// };
 export const redirectUrl = async (req, res) => {
     try {
         const { slugName } = req.params;
@@ -156,12 +275,10 @@ export const redirectUrl = async (req, res) => {
             return res.status(400).json({ message: "Slug name missing" });
         }
 
-        // Detect requesting domain
+        
         const hostDomain = (req.headers.host || "").toLowerCase();
-
         console.log("Incoming request domain:", hostDomain);
 
-        // ---- STEP 1: Check if this domain is a CUSTOM DOMAIN ----
         const customDomainOwner = await User.findOne({
             "customDomain.name": hostDomain,
         });
@@ -169,33 +286,49 @@ export const redirectUrl = async (req, res) => {
         let validDomainList = [];
 
         if (customDomainOwner) {
-            // This request is coming through a custom domain
             console.log("Custom domain detected:", hostDomain);
-
             validDomainList = [hostDomain, `www.${hostDomain}`];
         } else {
-            // This is your default domain
             validDomainList = [
                 hostDomain,
                 `www.${hostDomain}`,
-                "trim-url-gpxt.onrender.com", // default
+                "trim-url-gpxt.onrender.com",
                 "www.trimurl.site",
                 "trimurl.site",
             ];
         }
 
-        // ---- STEP 2: Find the short URL that matches slug + domain ----
+     
+        const ip =
+            req.headers["x-forwarded-for"]?.split(",")[0] ||
+            req.socket.remoteAddress ||
+            "";
+
+      
+        const geoRes = await fetch(`https://ipwho.is/${ip}`);
+        const geoData = await geoRes.json();
+
+        const country = geoData?.country || "Unknown";
+
+     
         const urlData = await ShortUrl.findOne({
             slugName,
             domain: { $in: validDomainList },
         });
 
         if (!urlData) {
-            console.log("No match found for domain + slug:", slugName, validDomainList);
+            console.log("No match found:", slugName, validDomainList);
             return res.status(404).json({ message: "Short URL not found" });
         }
 
-        // ---- STEP 3: Handle protected links ----
+      
+        if (urlData.blockedCountries?.includes(country)) {
+            return res.json({
+                message: `This country (${country}) can't access this URL`,
+            });
+        }
+
+     
         if (urlData.protected) {
             return res.redirect(
                 302,
@@ -203,7 +336,7 @@ export const redirectUrl = async (req, res) => {
             );
         }
 
-        // ---- STEP 4: Inactive link check ----
+   
         if (!urlData.isActive) {
             const redirectBase =
                 process.env.MODE === "dev"
@@ -213,27 +346,18 @@ export const redirectUrl = async (req, res) => {
             return res.redirect(302, `${redirectBase}/in-active`);
         }
 
-        // ---- STEP 5: Click Count ----
+       
         await ShortUrl.updateOne({ _id: urlData._id }, { $inc: { clicks: 1 } });
 
-        // ---- STEP 6: Redirect to final destination ----
+      
         res.redirect(302, urlData.destinationUrl);
 
-        // ---- STEP 7: Run analytics in background ----
+        
         (async () => {
             try {
-                const ip =
-                    req.headers["x-forwarded-for"]?.split(",")[0] ||
-                    req.socket.remoteAddress ||
-                    "";
-
-                const geoRes = await fetch(`https://ipwho.is/${ip}`);
-                const geoData = await geoRes.json();
-
-                const country = geoData?.country || "Unknown";
-                const city = geoData?.city || "Unknown";
-
                 const parser = new UAParser(req.headers["user-agent"]);
+
+                const city = geoData?.city || "Unknown";
                 const browser = parser.getBrowser().name || "Unknown";
                 const device = parser.getDevice().type || "Unknown";
                 const os = parser.getOS().name || "Unknown";
@@ -254,6 +378,7 @@ export const redirectUrl = async (req, res) => {
                 console.error(`[Analytics Error: ${slugName}]`, err);
             }
         })();
+
     } catch (err) {
         console.error("Redirect Error:", err);
         res.status(500).json({ message: "Internal Server Error" });
@@ -746,7 +871,7 @@ export const createToken = async (req, res) => {
     }
 
     try {
-        
+
         const user = await User.findById(userId);
         const exists = user.token.find(t => t.tokenName === tokenName);
 
@@ -757,7 +882,7 @@ export const createToken = async (req, res) => {
         const tokenId = uuid();
         const tokenData = { tokenName, tokenId };
 
-     
+
         const updatedUser = await User.findOneAndUpdate(
             { _id: userId },
             { $push: { token: tokenData } },
