@@ -83,6 +83,7 @@ export const updateShortUrl = async (req, res) => {
         password,
         isActive,
         domain,
+        blockedCountries
     } = req.body;
 
     try {
@@ -116,7 +117,7 @@ export const updateShortUrl = async (req, res) => {
 
         if (destinationUrl) existingUrl.destinationUrl = destinationUrl;
         if (typeof isActive !== "undefined") existingUrl.isActive = isActive;
-
+        if (blockedCountries) existingUrl.blockedCountries = blockedCountries
         if (tags) {
             const newTags = Array.isArray(tags) ? tags : [tags];
             existingUrl.tags = newTags;
